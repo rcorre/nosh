@@ -19,29 +19,42 @@ use tabled::{
 
 const APP_NAME: &'static str = "nom";
 
-#[derive(clap::Args)]
-struct NomArgs {
-    food: String,
-    serving: Option<String>,
-}
-
 #[derive(Subcommand)]
 enum FoodCommand {
     Edit { key: String },
     Show { key: String },
 }
 
-#[derive(clap::Args)]
-struct ShowArgs {}
+#[derive(Subcommand)]
+enum JournalCommand {
+    Edit { key: String },
+    Show { key: String },
+}
+
+#[derive(Subcommand)]
+enum RecipeCommand {
+    Edit { key: String },
+    Show { key: String },
+}
 
 #[derive(Subcommand)]
 enum Command {
-    Nom(NomArgs),
+    Nom {
+        food: String,
+        serving: Option<String>,
+    },
     Food {
         #[command(subcommand)]
         command: FoodCommand,
     },
-    Show(ShowArgs),
+    Recipe {
+        #[command(subcommand)]
+        command: RecipeCommand,
+    },
+    Journal {
+        #[command(subcommand)]
+        command: JournalCommand,
+    },
 }
 
 #[derive(Parser)]
@@ -257,18 +270,25 @@ fn main() -> Result<()> {
     log::debug!("Created directories: {data:?}");
 
     match args.command {
-        Command::Nom(args) => nom(&data, args),
-        Command::Show(args) => show(&data, args),
+        Command::Nom { food, serving } => nom(&data, &food, serving),
         Command::Food { command } => match command {
             FoodCommand::Edit { key } => edit_food(&data, &key),
             FoodCommand::Show { key } => show_food(&data, &key),
+        },
+        Command::Recipe { command } => match command {
+            RecipeCommand::Edit { key } => todo!(),
+            RecipeCommand::Show { key } => todo!(),
+        },
+        Command::Journal { command } => match command {
+            JournalCommand::Edit { key } => todo!(),
+            JournalCommand::Show { key } => show_journal(&data),
         },
     }?;
 
     Ok(())
 }
 
-fn show(data: &Data, args: ShowArgs) -> Result<()> {
+fn show_journal(data: &Data) -> Result<()> {
     let now = chrono::Local::now();
     let journal = data.journal(now)?.unwrap_or_default();
     let rows: Result<Vec<_>> = journal
@@ -315,7 +335,7 @@ fn show(data: &Data, args: ShowArgs) -> Result<()> {
     Ok(())
 }
 
-fn nom(data: &Data, args: NomArgs) -> Result<()> {
+fn nom(data: &Data, food: &str, serving: Option<String>) -> Result<()> {
     Ok(())
 }
 
