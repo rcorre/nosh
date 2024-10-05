@@ -1,27 +1,23 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 use tabled::{
-    grid::colors::Colors,
     settings::{
         object::Rows,
-        panel::Header,
-        style::{HorizontalLine, LineText, VerticalLine},
+        style::HorizontalLine,
         themes::{Colorization, ColumnNames},
-        Border, Color, Concat, Panel, Style,
+        Color, Concat, Style,
     },
     Table,
 };
 
 const APP_NAME: &'static str = "nom";
-
-#[derive(clap::Args)]
-struct ShowArgs {}
 
 #[derive(clap::Args)]
 struct NomArgs {
@@ -31,8 +27,20 @@ struct NomArgs {
 }
 
 #[derive(Subcommand)]
+enum FoodCommand {
+    Edit { key: String },
+}
+
+#[derive(clap::Args)]
+struct ShowArgs {}
+
+#[derive(Subcommand)]
 enum Command {
     Nom(NomArgs),
+    Food {
+        #[command(subcommand)]
+        command: FoodCommand,
+    },
     Show(ShowArgs),
 }
 
@@ -44,7 +52,7 @@ struct Args {
 }
 
 // The macronutrients of a food.
-#[derive(Clone, Copy, Debug, Default, Deserialize, tabled::Tabled)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, tabled::Tabled)]
 pub struct Nutrients {
     pub carb: f32,
     pub fat: f32,
@@ -127,7 +135,7 @@ fn test_nutrient_kcal_computation() {
 }
 
 // Food describes a single food item.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Food {
     // The display name of the food. This is shown in the UI.
     // Data files will reference the food by it's filename, not display name.
@@ -192,31 +200,37 @@ impl Data {
         Ok(())
     }
 
-    pub fn food(&self, key: &str) -> Result<Food> {
-        let path = self.food_dir.join(key).with_extension("toml");
-        let raw = fs::read_to_string(&path).with_context(|| format!("Reading {path:?}"))?;
-        Ok(toml::from_str(&raw)?)
+    fn read<T: serde::de::DeserializeOwned>(&self, path: &Path) -> Result<Option<T>> {
+        log::trace!("Reading {path:?}");
+        match fs::read_to_string(&path) {
+            Ok(s) => Ok(Some(toml::from_str(&s)?)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e).with_context(|| "Opening {path:?}"),
+        }
+    }
+
+    pub fn food(&self, key: &str) -> Result<Option<Food>> {
+        self.read(&self.food_dir.join(key).with_extension("toml"))
+    }
+
+    pub fn write_food(&self, key: &str, food: &Food) -> Result<()> {
+        Ok(fs::write(
+            self.food_dir.join(key).with_extension("toml"),
+            toml::to_string_pretty(food)?,
+        )?)
     }
 
     // Fetch the journal for the given date.
     // Returns None if there is no journal for that date.
     pub fn journal(&self, date: impl chrono::Datelike) -> Result<Option<Journal>> {
-        let path = self
-            .journal_dir
-            .join(format!("{:04}", date.year()))
-            .join(format!("{:02}", date.month()))
-            .join(format!("{:02}", date.day()))
-            .with_extension("toml");
-        let raw = match fs::read_to_string(&path) {
-            Ok(s) => Ok(s),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                log::debug!("Not found: {path:?}");
-                return Ok(None);
-            }
-            Err(e) => Err(e).with_context(|| "Opening {path:?}"),
-        }?;
-        //.with_context(|| format!("Reading {path:?}"))?;
-        Ok(toml::from_str(&raw)?)
+        self.read(
+            &self
+                .journal_dir
+                .join(format!("{:04}", date.year()))
+                .join(format!("{:02}", date.month()))
+                .join(format!("{:02}", date.day()))
+                .with_extension("toml"),
+        )
     }
 }
 
@@ -245,6 +259,9 @@ fn main() -> Result<()> {
     match args.command {
         Command::Nom(args) => nom(&data, args),
         Command::Show(args) => show(&data, args),
+        Command::Food { command } => match command {
+            FoodCommand::Edit { key } => edit_food(&data, &key),
+        },
     }?;
 
     Ok(())
@@ -256,12 +273,15 @@ fn show(data: &Data, args: ShowArgs) -> Result<()> {
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, &serving)| {
-            data.food(key).map(|food| JournalRow {
+        .map(|(key, serving)| (data.food(key), serving))
+        .map(|(food, &serving)| match food {
+            Ok(Some(food)) => Ok(JournalRow {
                 name: food.name,
                 serving,
                 nutrients: food.nutrients * serving,
-            })
+            }),
+            Ok(None) => Err(anyhow::format_err!("Food not found")),
+            Err(err) => Err(err),
         })
         .collect();
     let rows = rows?;
@@ -296,4 +316,34 @@ fn show(data: &Data, args: ShowArgs) -> Result<()> {
 
 fn nom(data: &Data, args: NomArgs) -> Result<()> {
     Ok(())
+}
+
+fn edit_food(data: &Data, key: &str) -> Result<()> {
+    let food = data.food(key)?.unwrap_or_default();
+    let mut tmp = tempfile::Builder::new().suffix(".toml").tempfile()?;
+    tmp.write_all(toml::to_string_pretty(&food)?.as_bytes())?;
+    tmp.flush()?;
+    log::debug!("Wrote {food:?} to {tmp:?}");
+
+    let editor = std::env::var("EDITOR").context("EDITOR not set")?;
+    let editor = which::which(editor)?;
+    let mut cmd = std::process::Command::new(editor);
+    cmd.arg(tmp.path())
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit());
+    log::debug!("Running {cmd:?}");
+
+    let status = cmd.spawn()?.wait()?;
+    anyhow::ensure!(status.success(), "Editor exited with code: {status:?}");
+
+    let mut input = String::new();
+    let mut file = fs::File::open(tmp.path())?;
+    file.read_to_string(&mut input)?;
+    log::debug!("Read edited food: {input}");
+
+    let food: Food = toml::from_str(&input)?;
+    log::debug!("Parsed edited food: {food:?}");
+
+    data.write_food(key, &food)
 }
