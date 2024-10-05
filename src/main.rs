@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nosh::{Database, Food, Journal, Nutrients, Recipe, Serving, APP_NAME};
+use nosh::{Database, Food, Journal, Nutrients, Serving, APP_NAME};
 use std::{fs, io::Write};
 use tabled::{
     settings::{
@@ -29,12 +29,6 @@ enum JournalCommand {
 }
 
 #[derive(Subcommand)]
-enum RecipeCommand {
-    Edit { key: String },
-    Show { key: String },
-}
-
-#[derive(Subcommand)]
 enum Command {
     Eat {
         food: String,
@@ -43,10 +37,6 @@ enum Command {
     Food {
         #[command(subcommand)]
         command: FoodCommand,
-    },
-    Recipe {
-        #[command(subcommand)]
-        command: RecipeCommand,
     },
     Journal {
         #[command(subcommand)]
@@ -85,68 +75,12 @@ fn main() -> Result<()> {
             FoodCommand::Ls { term } => list_food(&data, term),
             FoodCommand::Rm { key } => rm_food(&data, key),
         },
-        Command::Recipe { command } => match command {
-            RecipeCommand::Edit { key } => edit_recipe(&data, &key),
-            RecipeCommand::Show { key } => show_recipe(&data, &key),
-        },
         Command::Journal { command } => match command {
             JournalCommand::Edit { key } => edit_journal(&data, key),
             JournalCommand::Show { key } => show_journal(&data, key),
         },
     }?;
 
-    Ok(())
-}
-
-fn edit_recipe(data: &Database, key: &str) -> Result<()> {
-    let recipe = data.load::<Recipe>(&key)?.unwrap_or_default();
-    let recipe = edit(&recipe)?;
-    data.save(key, &recipe)
-}
-
-fn show_recipe(data: &Database, key: &str) -> Result<()> {
-    let journal = data.load::<Recipe>(key)?.unwrap_or_default();
-    let rows: Result<Vec<_>> = journal
-        .ingredients
-        .iter()
-        .map(|(key, serving)| (key, data.load::<Food>(key), serving))
-        .map(|(key, food, serving)| match food {
-            Ok(Some(food)) => Ok(JournalRow {
-                serving: serving.clone(),
-                nutrients: food.serve(serving)?,
-                name: food.name,
-            }),
-            Ok(None) => Err(anyhow::format_err!("Food not found: {key}")),
-            Err(err) => Err(err),
-        })
-        .collect();
-    let rows = rows?;
-    let total: Nutrients = rows
-        .iter()
-        .fold(Nutrients::default(), |a, b| a + b.nutrients);
-    let mut total = Table::new([[
-        "Total".to_string(),
-        "".to_string(),
-        format!("{:.1}", total.carb),
-        format!("{:.1}", total.fat),
-        format!("{:.1}", total.protein),
-        format!("{:.0}", total.kcal),
-    ]]);
-    total.with(ColumnNames::default());
-
-    let line = HorizontalLine::inherit(Style::modern());
-
-    let table = Table::new(rows)
-        .with(
-            Style::modern()
-                .remove_horizontals()
-                .horizontals([(1, line)]),
-        )
-        .with(Concat::vertical(total))
-        .with(Colorization::exact([Color::BOLD], Rows::last()))
-        .to_string();
-
-    println!("{table}");
     Ok(())
 }
 

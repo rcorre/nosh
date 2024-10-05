@@ -2,7 +2,6 @@ pub mod data;
 pub mod food;
 pub mod journal;
 pub mod nutrients;
-pub mod recipe;
 pub mod search;
 pub mod serving;
 
@@ -10,7 +9,6 @@ pub use data::*;
 pub use food::*;
 pub use journal::*;
 pub use nutrients::*;
-pub use recipe::*;
 pub use search::*;
 pub use serving::*;
 
@@ -28,10 +26,6 @@ pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 //   - food/
 //     - apple.txt
 //     - banana.txt
-//
-//   - recipe/
-//     - cake.txt
-//     - pie.txt
 //
 //   - journal/
 //     - 2024/
@@ -282,79 +276,79 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_save_recipe() {
-        let (data, tmp) = setup();
-        let recipe = Recipe {
-            name: "Granola".into(),
-            ingredients: vec![
-                (
-                    "oats".into(),
-                    Serving {
-                        size: 6.0,
-                        unit: Some("cups".into()),
-                    },
-                ),
-                (
-                    "oil".into(),
-                    Serving {
-                        size: 0.5,
-                        unit: Some("cups".into()),
-                    },
-                ),
-                (
-                    "maple_syrup".into(),
-                    Serving {
-                        size: 0.5,
-                        unit: Some("cups".into()),
-                    },
-                ),
-            ],
-        };
-        data.save("granola", &recipe).unwrap();
+    // #[test]
+    // fn test_save_recipe() {
+    //     let (data, tmp) = setup();
+    //     let recipe = Recipe {
+    //         name: "Granola".into(),
+    //         ingredients: vec![
+    //             (
+    //                 "oats".into(),
+    //                 Serving {
+    //                     size: 6.0,
+    //                     unit: Some("cups".into()),
+    //                 },
+    //             ),
+    //             (
+    //                 "oil".into(),
+    //                 Serving {
+    //                     size: 0.5,
+    //                     unit: Some("cups".into()),
+    //                 },
+    //             ),
+    //             (
+    //                 "maple_syrup".into(),
+    //                 Serving {
+    //                     size: 0.5,
+    //                     unit: Some("cups".into()),
+    //                 },
+    //             ),
+    //         ],
+    //     };
+    //     data.save("granola", &recipe).unwrap();
 
-        let actual = fs::read_to_string(
-            tmp.path()
-                .join("recipe")
-                .join("granola")
-                .with_extension("txt"),
-        )
-        .unwrap();
-        assert_eq!(
-            actual,
-            [
-                "oats = 6 cups",
-                "oil = 0.5 cups",
-                "maple_syrup = 0.5 cups",
-                ""
-            ]
-            .join("\n")
-        );
-    }
+    //     let actual = fs::read_to_string(
+    //         tmp.path()
+    //             .join("recipe")
+    //             .join("granola")
+    //             .with_extension("txt"),
+    //     )
+    //     .unwrap();
+    //     assert_eq!(
+    //         actual,
+    //         [
+    //             "oats = 6 cups",
+    //             "oil = 0.5 cups",
+    //             "maple_syrup = 0.5 cups",
+    //             ""
+    //         ]
+    //         .join("\n")
+    //     );
+    // }
 
-    #[test]
-    fn test_load_recipe() {
-        let (data, _tmp) = setup();
-        let actual = data.load::<Recipe>("banana_oatmeal").unwrap().unwrap();
-        let expected = Recipe {
-            name: "Banana Oatmeal".into(),
-            ingredients: vec![
-                (
-                    "oats".into(),
-                    Serving {
-                        size: 0.5,
-                        unit: Some("c".into()),
-                    },
-                ),
-                (
-                    "banana".into(),
-                    Serving {
-                        size: 150.0,
-                        unit: Some("g".into()),
-                    },
-                ),
-            ],
-        };
-        assert_eq!(actual, expected,);
-    }
+    // #[test]
+    // fn test_load_recipe() {
+    //     let (data, _tmp) = setup();
+    //     let actual = data.load::<Recipe>("banana_oatmeal").unwrap().unwrap();
+    //     let expected = Recipe {
+    //         name: "Banana Oatmeal".into(),
+    //         ingredients: vec![
+    //             (
+    //                 "oats".into(),
+    //                 Serving {
+    //                     size: 0.5,
+    //                     unit: Some("c".into()),
+    //                 },
+    //             ),
+    //             (
+    //                 "banana".into(),
+    //                 Serving {
+    //                     size: 150.0,
+    //                     unit: Some("g".into()),
+    //                 },
+    //             ),
+    //         ],
+    //     };
+    //     assert_eq!(actual, expected,);
+    // }
 }
