@@ -1,7 +1,7 @@
 use crate::serving::Serving;
 use crate::{nutrients::Nutrients, Data};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use ini::{Ini, WriteOption};
 
 #[derive(Debug, Default)]
@@ -170,7 +170,6 @@ impl Data for Food {
     ) -> Result<Self> {
         let mut food = Food::default();
         let ini = Ini::read_from(&mut r)?;
-
         log::trace!("Parsing: {ini:?}");
 
         food.name = if let Some(name) = ini.general_section().get("name") {
