@@ -276,10 +276,10 @@ struct SearchNutrient {
 #[serde(rename_all = "camelCase")]
 struct SearchFood {
     description: Option<String>,
-    serving_size: Option<f32>,
-    serving_size_unit: Option<String>,
+    serving_size: Option<f32>,                   // 144.0
+    serving_size_unit: Option<String>,           // "g"
+    household_serving_full_text: Option<String>, // "1 cup"
     food_nutrients: Option<Vec<SearchNutrient>>,
-    // household_serving_full_text: String,
 }
 
 impl SearchFood {
@@ -311,11 +311,22 @@ impl SearchFood {
     }
 
     fn servings(&self) -> HashMap<String, f32> {
-        // TODO: Parse household serving
-        match (&self.serving_size_unit, self.serving_size) {
-            (Some(unit), Some(size)) => [(unit.clone(), size)].into(),
-            _ => [].into(),
+        let mut res = HashMap::new();
+        if let (Some(unit), Some(size)) = (&self.serving_size_unit, self.serving_size) {
+            res.insert(unit.clone(), size);
         }
+        if let Some(serving) = self.household_serving_full_text.as_ref() {
+            let Some((amount, unit)) = serving.split_once(char::is_whitespace) else {
+                log::warn!("Failed to parse household serving: {serving}");
+                return res;
+            };
+            let Ok(amount) = amount.parse::<f32>() else {
+                log::warn!("Failed to parse household serving amount: {serving}");
+                return res;
+            };
+            res.insert(unit.into(), amount);
+        }
+        res
     }
 }
 

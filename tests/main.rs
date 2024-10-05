@@ -1,9 +1,9 @@
-use std::{io::Write, os::unix::fs::OpenOptionsExt};
+use std::{io::Write, ops::Deref, os::unix::fs::OpenOptionsExt};
 
 use assert_cmd::Command;
 use httptest::http::request;
 use nosh::{Food, Nutrients, APP_NAME};
-use predicates::prelude::*;
+use predicates::{prelude::*, BoxPredicate};
 
 struct CLI {
     data_dir: tempfile::TempDir,
@@ -100,6 +100,19 @@ fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
     ))
 }
 
+fn matches_food_details(food: &Food) -> BoxPredicate<str> {
+    let n = &food.nutrients;
+    let mut pred = BoxPredicate::<str>::new(
+        matches(&format!("fat.*{}", n.fat))
+            .and(matches(&format!("protein.*{}", n.protein)))
+            .and(matches(&format!("kcal.*{}", n.kcal))),
+    );
+    for (unit, amount) in &food.servings {
+        pred = BoxPredicate::<str>::new(pred.and(matches(&format!("{unit}.*{amount}"))));
+    }
+    pred
+}
+
 fn matches_serving(serving: f32, food: &Food) -> predicates::str::RegexPredicate {
     let n = food.nutrients * serving;
     matches(&format!(
@@ -139,11 +152,7 @@ fn test_food_show() {
         .args(["food", "show", "oats"])
         .assert()
         .success()
-        .stdout(matches("carb.*68.7"))
-        .stdout(matches("fat.*5.89"))
-        .stdout(matches("protein.*13.5"))
-        .stdout(matches("kcal.*382"))
-        .stdout(matches("g.*100"));
+        .stdout(matches_food_details(&oats()));
 }
 
 #[test]
@@ -332,11 +341,10 @@ fn test_food_search() {
         Expectation::matching(request::method_path("GET", "/test")).respond_with(
             status_code(200).body(
                 r#"{"foods":[{
-        "fdcId": 2344876,
         "description": "Potato, NFS",
-        "foodCode": 71000100,
-        "foodCategory": "White potatoes, baked or boiled",
-        "foodCategoryId": 2649423,
+        "servingSizeUnit": "g",
+        "servingSize": 144.0,
+        "householdServingFullText": "1 cup",
         "foodNutrients": [
             {
               "nutrientId": 1003,
@@ -376,7 +384,7 @@ fn test_food_search() {
             protein: 1.87,
             kcal: 126.0,
         },
-        servings: [].into(),
+        servings: [("g".to_string(), 144.0), ("cup".to_string(), 1.0)].into(),
     };
 
     cli.search(&url.to_string())
@@ -388,8 +396,8 @@ fn test_food_search() {
 
     // The food should have been added.
     cli.cmd()
-        .args(["food", "ls", "potato"])
+        .args(["food", "show", "potato"])
         .assert()
         .success()
-        .stdout(matches_food(&food));
+        .stdout(matches_food_details(&food));
 }
