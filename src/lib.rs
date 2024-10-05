@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
@@ -249,6 +250,22 @@ impl Data {
         Ok(Some(food))
     }
 
+    pub fn save_food(&self, key: &str, food: &Food) -> Result<()> {
+        let path = &self.food_dir.join(key).with_extension("txt");
+        let file = fs::File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        let n = &food.nutrients;
+        writeln!(writer, "name: {}", food.name)?;
+        writeln!(writer, "carb: {}", n.carb)?;
+        writeln!(writer, "fat: {}", n.fat)?;
+        writeln!(writer, "protein: {}", n.protein)?;
+        writeln!(writer, "kcal: {}", n.kcal)?;
+        for (size, unit) in &food.servings {
+            writeln!(writer, "serving: {size} {unit}")?;
+        }
+        Ok(())
+    }
+
     pub fn list_food<'a>(
         &self,
         term: &'a Option<&str>,
@@ -322,6 +339,36 @@ mod tests {
         assert_eq!(oats.nutrients.kcal, 162.0);
         assert_eq!(oats.servings["cups"], 0.5);
         assert_eq!(oats.servings["g"], 50.0);
+    }
+
+    #[test]
+    fn test_save_food() {
+        let (data, tmp) = setup();
+        let banana = Food {
+            name: "Banana".into(),
+            nutrients: Nutrients {
+                carb: 22.0,
+                fat: 0.5,
+                protein: 1.2,
+                kcal: 120.0,
+            },
+            servings: [("g".into(), 50.0), ("cups".into(), 2.5)].into(),
+        };
+        data.save_food("banana", &banana).unwrap();
+        let res = fs::read_to_string(tmp.path().join("food/banana.txt")).unwrap();
+        assert_eq!(
+            res,
+            [
+                "name: Banana",
+                "carb: 22",
+                "fat: 0.5",
+                "protein: 1.2",
+                "kcal: 162",
+                "serving: 50.0 g",
+                "serving: 2.5 cups",
+            ]
+            .join("\n")
+        );
     }
 
     #[test]
