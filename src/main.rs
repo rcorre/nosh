@@ -11,6 +11,7 @@ use tabled::{
     },
     Table,
 };
+use terminal_size::{terminal_size, Height};
 
 #[derive(Subcommand)]
 enum FoodCommand {
@@ -297,9 +298,17 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     let mut search = nosh::Search {
         term: &term,
-        // page_size: 2,
         ..Default::default()
     };
+
+    // Show only as many results as will fit on screen.
+    if let Some((_, Height(h))) = terminal_size() {
+        log::debug!("Terminal height is {h}");
+        // Subtract 6 to leave room for headers/footers.
+        search.page_size = h.saturating_sub(6) as usize;
+    } else {
+        log::warn!("Unable to get terminal size");
+    }
 
     // This is mostly here to allow injecting a url for testing.
     let url = std::env::var("NOSH_SEARCH_URL").ok();
