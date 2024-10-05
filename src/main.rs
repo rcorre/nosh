@@ -29,6 +29,7 @@ struct NomArgs {
 #[derive(Subcommand)]
 enum FoodCommand {
     Edit { key: String },
+    Show { key: String },
 }
 
 #[derive(clap::Args)]
@@ -261,6 +262,7 @@ fn main() -> Result<()> {
         Command::Show(args) => show(&data, args),
         Command::Food { command } => match command {
             FoodCommand::Edit { key } => edit_food(&data, &key),
+            FoodCommand::Show { key } => show_food(&data, &key),
         },
     }?;
 
@@ -346,4 +348,14 @@ fn edit_food(data: &Data, key: &str) -> Result<()> {
     log::debug!("Parsed edited food: {food:?}");
 
     data.write_food(key, &food)
+}
+
+fn show_food(data: &Data, key: &str) -> Result<()> {
+    let Some(food) = data.food(key)? else {
+        println!("No food with key {key:?}");
+        return Ok(());
+    };
+
+    println!("{food:#?}");
+    Ok(())
 }
