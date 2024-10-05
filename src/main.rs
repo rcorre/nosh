@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use nom::{Data, Nutrients};
 use serde::{de::DeserializeOwned, Serialize};
@@ -199,11 +199,11 @@ fn edit_food(data: &Data, key: &str) -> Result<()> {
 }
 
 fn show_food(data: &Data, key: &str) -> Result<()> {
-    let Some(food) = data.food(key)? else {
-        println!("No food with key {key:?}");
-        return Ok(());
-    };
-
-    println!("{food:#?}");
-    Ok(())
+    match data.food(key)? {
+        Some(food) => {
+            println!("{food:#?}");
+            Ok(())
+        }
+        None => Err(anyhow!("No food with key {key:?}")),
+    }
 }

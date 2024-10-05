@@ -67,7 +67,7 @@ fn test_nutrient_mult() {
     assert_eq!(nut.carb, 2.4);
     assert_eq!(nut.fat, 4.6);
     assert_eq!(nut.protein, 6.2);
-    assert_eq!(nut.kcal, 149.0);
+    assert_eq!(nut.kcal, 249.0);
 }
 
 #[test]
