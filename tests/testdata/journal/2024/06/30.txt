@@ -1,0 +1,3 @@
+banana = 1.5
+oats = 150g
+

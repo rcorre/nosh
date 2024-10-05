@@ -1,9 +1,10 @@
 use anyhow::{anyhow, bail, Context, Result};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 
@@ -121,10 +122,83 @@ pub struct Food {
     pub servings: Vec<(String, f32)>,
 }
 
-// Journal is a record of food consumed during a day.
-#[derive(Serialize, Deserialize, Debug, Default)]
+// Serving is a portion of food, optionally paired with a unit.
+// Without a unit, it represents a portion of a serving, e.g. 1.5 servings.
+// Otherwise, it represents a quantity such as "150 grams".
+#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Journal(pub HashMap<String, f32>);
+pub struct Serving {
+    pub size: f32,
+    pub unit: Option<String>,
+}
+
+impl Default for Serving {
+    fn default() -> Self {
+        Self {
+            size: 1.0,
+            unit: None,
+        }
+    }
+}
+
+impl std::fmt::Display for Serving {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.unit {
+            Some(unit) => write!(f, "{} {}", self.size, unit),
+            None => write!(f, "{}", self.size),
+        }
+    }
+}
+
+// A serving can be parsed from a strings of form:
+// "1.5", "1.5cups", "1.5 cups"
+impl FromStr for Serving {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+        let (size, unit) = match s.find(|c: char| c != '.' && !c.is_digit(10)) {
+            Some(idx) => {
+                let (size, unit) = s.split_at(idx);
+                (size.trim(), Some(unit.trim()))
+            }
+            None => (s, None),
+        };
+        let size = size.parse().with_context(|| format!("Parsing '{size}'"))?;
+        Ok(Self {
+            size,
+            unit: unit.map(str::to_string),
+        })
+    }
+}
+
+#[test]
+fn test_parse_serving() {
+    let parse = |s: &str| s.parse::<Serving>();
+    let serv = |size, unit: Option<&str>| Serving {
+        size,
+        unit: unit.map(str::to_string),
+    };
+    assert_eq!(parse("1.5").unwrap(), serv(1.5, None));
+    assert_eq!(parse("1.5c").unwrap(), serv(1.5, Some("c")));
+    assert_eq!(parse("1.5 cup").unwrap(), serv(1.5, Some("cup")));
+    assert_eq!(parse("25 g dry").unwrap(), serv(25.0, Some("g gry")));
+    assert_eq!(parse("25g dry").unwrap(), serv(25.0, Some("g gry")));
+    assert_eq!(parse(" 1.5  cup ").unwrap(), serv(1.5, Some("cup")));
+    assert!(parse("cup 1.5").is_err());
+}
+
+// Journal is a record of food consumed during a day.
+// It is a list of "food: serving" lines.
+// The serving is optional and defaults to 1.
+// For example:
+// ```
+// oats: 0.5 cup
+// banana: 1
+// berries
+// ```
+#[derive(Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Journal(pub Vec<(String, Serving)>);
 
 // Data provides access to the nosh "database".
 // Nosh stores all of it's data as TOML files using a particular directory structure:
@@ -189,15 +263,6 @@ impl Data {
             }))
     }
 
-    fn read<T: serde::de::DeserializeOwned>(&self, path: &Path) -> Result<Option<T>> {
-        log::trace!("Reading {path:?}");
-        match fs::read_to_string(&path) {
-            Ok(s) => Ok(Some(toml::from_str(&s)?)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e).with_context(|| "Opening {path:?}"),
-        }
-    }
-
     fn write<T: serde::Serialize + std::fmt::Debug>(&self, path: &Path, obj: &T) -> Result<()> {
         log::trace!("Writing to {path:?}: {obj:?}");
         fs::create_dir_all(
@@ -207,7 +272,7 @@ impl Data {
         Ok(fs::write(&path, toml::to_string_pretty(obj)?)?)
     }
 
-    pub fn read_food(&self, key: &str) -> Result<Option<Food>> {
+    pub fn load_food(&self, key: &str) -> Result<Option<Food>> {
         let path = &self.food_dir.join(key).with_extension("txt");
         let content = match fs::read_to_string(&path) {
             Ok(s) => s,
@@ -280,22 +345,44 @@ impl Data {
         self.write(&self.food_dir.join(key).with_extension("toml"), food)
     }
 
-    fn journal_path(&self, date: &impl chrono::Datelike) -> PathBuf {
+    fn journal_path(&self, date: &impl Datelike) -> PathBuf {
         self.journal_dir
             .join(format!("{:04}", date.year()))
             .join(format!("{:02}", date.month()))
             .join(format!("{:02}", date.day()))
-            .with_extension("toml")
+            .with_extension("txt")
     }
 
     // Fetch the journal for the given date.
     // Returns None if there is no journal for that date.
-    pub fn journal(&self, date: &impl chrono::Datelike) -> Result<Option<Journal>> {
-        self.read(&self.journal_path(date))
+    pub fn load_journal(&self, key: &impl Datelike) -> Result<Option<Journal>> {
+        let path = &self.journal_path(key);
+        let content = match fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                bail!("Failed to open '{path:?}': {e}")
+            }
+        };
+
+        let mut rows = vec![];
+        for line in content.lines() {
+            match line.split_once(":") {
+                Some((food, serving)) => rows.push((food.trim().into(), serving.parse()?)),
+                None => rows.push((line.trim().into(), Serving::default())),
+            }
+        }
+        Ok(Some(Journal(rows)))
     }
 
-    pub fn write_journal(&self, date: &impl chrono::Datelike, journal: &Journal) -> Result<()> {
-        self.write(&self.journal_path(date), journal)
+    pub fn save_journal(&self, key: &impl Datelike, journal: &Journal) -> Result<()> {
+        let path = &self.journal_path(key);
+        let file = fs::File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        for (food, serving) in &journal.0 {
+            writeln!(writer, "{food}: {serving}")?;
+        }
+        Ok(())
     }
 }
 
@@ -326,9 +413,9 @@ mod tests {
     }
 
     #[test]
-    fn test_read_food() {
+    fn test_load_food() {
         let (data, _tmp) = setup();
-        let oats = data.read_food("oats").unwrap().unwrap();
+        let oats = data.load_food("oats").unwrap().unwrap();
         assert_eq!(oats.name, "Oats");
         assert_eq!(oats.nutrients.carb, 68.7);
         assert_eq!(oats.nutrients.fat, 5.89);
@@ -369,19 +456,57 @@ mod tests {
     }
 
     #[test]
-    fn test_journal_data() {
+    fn test_load_journal_not_exists() {
         let tmp = tempfile::tempdir().unwrap();
         let data = Data::new(tmp.path()).unwrap();
+        let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
+        let actual = data.load_journal(&date.clone()).unwrap();
+        assert!(actual.is_none());
+    }
 
-        let expected = Journal(HashMap::from([
-            ("banana".to_string(), 1.0),
-            ("oats".to_string(), 2.0),
-            ("peanut_butter".to_string(), 1.5),
-        ]));
+    #[test]
+    fn test_load_journal() {
+        let (data, _tmp) = setup();
 
-        let date = &chrono::NaiveDate::from_ymd_opt(2024, 04, 02).unwrap();
-        data.write_journal(&date.clone(), &expected).unwrap();
-        let actual = data.journal(date).unwrap().unwrap();
+        let serv = |food: &str, size, unit| (food.into(), Serving { size, unit });
+        let expected = Journal(vec![
+            serv("banana", 1.0, None),
+            serv("oats", 0.5, Some("c".into())),
+            serv("oats", 1.0, None),
+            serv("banana", 50.0, Some("g".into())),
+        ]);
+
+        let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
+        let actual = data.load_journal(&date.clone()).unwrap().unwrap();
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_save_journal() {
+        let (data, tmp) = setup();
+
+        let serv = |food: &str, size, unit| (food.into(), Serving { size, unit });
+        let expected = Journal(vec![
+            serv("cookies", 1.0, None),
+            serv("crackers", 0.5, Some("cups".into())),
+            serv("cereal", 50.0, Some("g".into())),
+        ]);
+
+        let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 08).unwrap();
+        data.save_journal(&date.clone(), &expected).unwrap();
+
+        let actual = fs::read_to_string(
+            tmp.path()
+                .join("journal")
+                .join(format!("{:04}", date.year()))
+                .join(format!("{:02}", date.month()))
+                .join(format!("{:02}", date.day()))
+                .with_extension("txt"),
+        )
+        .unwrap();
+        assert_eq!(
+            actual,
+            ["cookies = 1.0", "crackers = 0.5 cups", "cereal = 50.0 g",].join("\n")
+        );
     }
 }

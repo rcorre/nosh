@@ -111,9 +111,9 @@ fn edit_journal(data: &Data, key: Option<String>) -> Result<()> {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
-    let journal = data.journal(&date)?.unwrap_or_default();
-    let journal = edit(&journal)?;
-    data.write_journal(&date, &journal)
+    let journal = data.load_journal(&date)?.unwrap_or_default();
+    // let journal = edit(&journal)?; // TODO
+    data.save_journal(&date, &journal)
 }
 
 fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
@@ -121,16 +121,16 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
-    let journal = data.journal(&date)?.unwrap_or_default();
+    let journal = data.load_journal(&date)?.unwrap_or_default();
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (data.read_food(key), serving))
+        .map(|(key, serving)| (data.load_food(key), serving))
         .map(|(food, &serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 name: food.name,
-                serving,
-                nutrients: food.nutrients * serving,
+                1.0, // TODO
+                nutrients: food.nutrients * 1.0, // TODO
             }),
             Ok(None) => Err(anyhow::format_err!("Food not found")),
             Err(err) => Err(err),
@@ -167,7 +167,7 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
 }
 
 fn eat(data: &Data, key: String, serving: Option<String>) -> Result<()> {
-    let Some(food) = data.read_food(&key)? else {
+    let Some(food) = data.load_food(&key)? else {
         bail!("No food with key {key:?}");
     };
     let serving = if let Some(serving) = serving {
@@ -191,14 +191,14 @@ fn eat(data: &Data, key: String, serving: Option<String>) -> Result<()> {
     let date = chrono::Local::now();
     log::debug!("Adding food={key} serving={serving} to {date:?}");
 
-    let mut journal = data.journal(&date)?.unwrap_or_default();
+    let mut journal = data.load_journal(&date)?.unwrap_or_default();
     journal
         .0
         .entry(key)
         .and_modify(|x| *x += serving)
         .or_insert(serving);
 
-    data.write_journal(&date, &journal)
+    data.save_journal(&date, &journal)
 }
 
 fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T> {
@@ -230,13 +230,13 @@ fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T
 }
 
 fn edit_food(data: &Data, key: &str) -> Result<()> {
-    let food = data.read_food(key)?.unwrap_or_default();
+    let food = data.load_food(key)?.unwrap_or_default();
     let food = edit(&food)?;
     data.save_food(key, &food)
 }
 
 fn show_food(data: &Data, key: &str) -> Result<()> {
-    let Some(food) = data.read_food(key)? else {
+    let Some(food) = data.load_food(key)? else {
         bail!("No food with key {key:?}");
     };
     let mut table = Table::new(std::iter::once(food));
@@ -345,7 +345,7 @@ struct SearchResponse {
 }
 
 fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
-    if data.read_food(&key)?.is_some() {
+    if data.load_food(&key)?.is_some() {
         bail!("Food with key {key} already exists");
     }
 

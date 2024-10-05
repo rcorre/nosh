@@ -1,0 +1,4 @@
+banana = 1
+oats = 0.5c
+oats = 1.0
+banana = 50g
