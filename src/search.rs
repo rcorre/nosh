@@ -3,6 +3,48 @@ use serde::Deserialize;
 
 use crate::Nutrients;
 
+const FDC_URL: &str = "https://api.nal.usda.gov/fdc/v1/foods/search";
+
+// Search for a food on Food Data Central
+// https://fdc.nal.usda.gov/api-guide.html
+pub struct Search<'a> {
+    pub term: &'a str,
+    pub page_size: usize,
+    pub url: &'a str,
+    pub page: usize, // starts at 1
+}
+
+impl<'a> Default for Search<'a> {
+    fn default() -> Self {
+        Self {
+            term: "",
+            url: FDC_URL,
+            page_size: 50,
+            page: 1,
+        }
+    }
+}
+
+impl<'a> Search<'a> {
+    // Return the next page of results.
+    pub fn next_page(&mut self) -> Result<Page> {
+        let client = reqwest::blocking::Client::new();
+
+        let req = client
+            .get(self.url)
+            .header("X-Api-Key", "DEMO_KEY")
+            .query(&[("query", self.term)])
+            .query(&[("pageNumber", self.page)])
+            .build()?;
+
+        log::debug!("Sending request: {req:?}");
+
+        let res: Page = client.execute(req)?.error_for_status()?.json()?;
+        self.page += 1;
+        Ok(res)
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchNutrient {
@@ -90,27 +132,14 @@ impl From<&SearchFood> for crate::Food {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SearchResponse {
+pub struct Page {
     foods: Vec<SearchFood>,
 }
 
-// Search for a food on Food Data Central
-// https://fdc.nal.usda.gov/api-guide.html
-// Leave URL as None to use the default search API.
-pub fn search_food(term: &str, url: Option<&str>) -> Result<Vec<crate::Food>> {
-    let client = reqwest::blocking::Client::new();
-    let url = url.unwrap_or("https://api.nal.usda.gov/fdc/v1/foods/search");
-
-    let req = client
-        .get(url)
-        .header("X-Api-Key", "DEMO_KEY")
-        .query(&[("query", &term)])
-        .build()?;
-
-    log::debug!("Sending request: {req:?}");
-
-    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
-    Ok(res.foods.iter().map(|x| crate::Food::from(x)).collect())
+impl Page {
+    pub fn iter(&self) -> impl Iterator<Item = crate::Food> + '_ {
+        self.foods.iter().map(|x| crate::Food::from(x))
+    }
 }
 
 #[cfg(test)]
@@ -133,9 +162,15 @@ mod tests {
         );
         let url = server.url("/test");
 
-        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        let mut search = Search {
+            term: "potato",
+            page_size: 2,
+            url: &url.to_string(),
+            page: 1,
+        };
+        let actual = search.next_page().unwrap();
         assert_eq!(
-            actual,
+            actual.iter().collect::<Vec<_>>(),
             vec![
                 Food {
                     name: "Flour, potato".into(),
@@ -172,9 +207,15 @@ mod tests {
         );
         let url = server.url("/test");
 
-        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        let mut search = Search {
+            term: "potato",
+            page_size: 2,
+            url: &url.to_string(),
+            page: 1,
+        };
+        let actual = search.next_page().unwrap();
         assert_eq!(
-            actual,
+            actual.iter().collect::<Vec<_>>(),
             vec![
                 Food {
                     name: "Potato patty".into(),
@@ -212,9 +253,15 @@ mod tests {
         );
         let url = server.url("/test");
 
-        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        let mut search = Search {
+            term: "potato",
+            page_size: 2,
+            url: &url.to_string(),
+            page: 1,
+        };
+        let actual = search.next_page().unwrap();
         assert_eq!(
-            actual,
+            actual.iter().collect::<Vec<_>>(),
             vec![
                 Food {
                     name: "Bread, potato".into(),
@@ -251,9 +298,15 @@ mod tests {
         );
         let url = server.url("/test");
 
-        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        let mut search = Search {
+            term: "potato",
+            page_size: 2,
+            url: &url.to_string(),
+            page: 1,
+        };
+        let actual = search.next_page().unwrap();
         assert_eq!(
-            actual,
+            actual.iter().collect::<Vec<_>>(),
             vec![
                 Food {
                     name: "KASIA'S, POTATO PANCAKES, POTATO, POTATO".into(),

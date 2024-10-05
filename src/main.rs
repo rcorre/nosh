@@ -295,18 +295,28 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     let term = term.unwrap_or(key.clone());
 
+    let mut search = nosh::Search {
+        term: &term,
+        // page_size: 2,
+        ..Default::default()
+    };
+
     // This is mostly here to allow injecting a url for testing.
     let url = std::env::var("NOSH_SEARCH_URL").ok();
-    let foods = nosh::search_food(&term, url.as_ref().map(String::as_str))?;
+    if let Some(url) = url.as_ref() {
+        search.url = &url;
+    };
 
-    if foods.is_empty() {
+    let foods = search.next_page()?;
+    let mut foods = foods.iter().peekable();
+
+    if foods.peek().is_none() {
         bail!("Found no foods matching '{term}'");
     }
 
     #[derive(tabled::Tabled)]
     struct Index(#[tabled(rename = "index")] usize);
     let foods: Vec<_> = foods
-        .iter()
         .enumerate()
         .map(|(i, food)| (Index(i), food))
         .collect();
@@ -328,7 +338,7 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     let idx: usize = res.parse()?;
     let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
-    data.save(key.as_str(), *food)?;
+    data.save(key.as_str(), food)?;
     println!("Added '{}' as {key}", food.name);
 
     Ok(())
