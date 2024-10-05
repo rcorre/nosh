@@ -7,13 +7,10 @@ info:
     - ls
     - nope
   env:
-    XDG_DATA_HOME: /tmp/.tmpzXPG5X
+    XDG_DATA_HOME: /tmp/.tmpLt775S
 ---
 success: true
 exit_code: 0
 ----- stdout -----
-┌─────┬──────┬──────┬─────┬─────────┬──────┬──────────┐
-│ key │ name │ carb │ fat │ protein │ kcal │ servings │
-├─────┼──────┼──────┼─────┼─────────┼──────┼──────────┤
 
 ----- stderr -----

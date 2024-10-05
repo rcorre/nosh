@@ -286,8 +286,10 @@ fn list_food(data: &Database, term: Option<String>) -> Result<()> {
         })
         .collect();
     items.sort_by(|a, b| a.0 .0.cmp(&b.0 .0));
-    let mut table = Table::new(items);
-    println!("{}", table.with(Style::sharp()));
+    if !items.is_empty() {
+        let mut table = Table::new(items);
+        println!("{}", table.with(Style::sharp()));
+    }
     Ok(())
 }
 
