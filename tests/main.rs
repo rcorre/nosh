@@ -229,7 +229,7 @@ fn test_journal_edit() {
         "2024-07-01",
         r#"
 oats = 1.5c
-banana
+banana = 1
 "#,
     );
     assert_cmd_snapshot!(cli.cmd().args(["journal", "show", "2024-07-01"]));

@@ -1,6 +1,7 @@
 use crate::{Data, Food, Nutrients, Serving};
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate};
+use ini::{Ini, WriteOption};
 
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -38,37 +39,37 @@ impl Data for Journal {
     }
 
     fn load(
-        r: impl std::io::BufRead,
+        mut r: impl std::io::BufRead,
         mut load_food: impl FnMut(&str) -> Result<Option<Food>>,
     ) -> Result<Self> {
         let mut rows = vec![];
-        for line in r.lines() {
-            let line = line?;
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let (key, serving) = match line.split_once("=") {
-                Some((food, serving)) => (food.trim(), serving.parse()?),
-                None => (line.trim(), Serving::default()),
-            };
-            let food = load_food(key)?;
-            let food = food.with_context(|| format!("Food not found: {key}"))?;
-            // Check that the serving is actually valid for this food.
-            food.serve(&serving)?;
+        let ini = Ini::read_from(&mut r)?;
+        log::trace!("Parsing: {ini:?}");
+        for (k, v) in ini.general_section() {
             rows.push(JournalEntry {
-                key: key.into(),
-                serving,
-                food,
-            });
+                key: k.into(),
+                serving: v.parse()?,
+                food: load_food(k)?.with_context(|| format!("Food not found: {k}"))?,
+            })
         }
         Ok(Self(rows))
     }
 
     fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
+        let mut ini = Ini::new();
+        let mut sec = ini.with_general_section();
         for JournalEntry { key, serving, .. } in &self.0 {
-            writeln!(w, "{key} = {serving}")?;
+            sec.add(key, serving.to_string());
         }
+        log::trace!("Writing: {ini:?}");
+        ini.write_to_opt(
+            w,
+            WriteOption {
+                line_separator: ini::LineSeparator::CR,
+                kv_separator: " = ",
+                ..Default::default()
+            },
+        )?;
         Ok(())
     }
 }
