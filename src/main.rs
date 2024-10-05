@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
@@ -27,8 +27,8 @@ enum FoodCommand {
 
 #[derive(Subcommand)]
 enum JournalCommand {
-    Edit { key: String },
-    Show { key: String },
+    Edit { key: Option<String> },
+    Show { key: Option<String> },
 }
 
 #[derive(Subcommand)]
@@ -233,22 +233,30 @@ impl Data {
         )?)
     }
 
+    fn journal_path(&self, date: &impl chrono::Datelike) -> PathBuf {
+        self.journal_dir
+            .join(format!("{:04}", date.year()))
+            .join(format!("{:02}", date.month()))
+            .join(format!("{:02}", date.day()))
+            .with_extension("toml")
+    }
+
     // Fetch the journal for the given date.
     // Returns None if there is no journal for that date.
-    pub fn journal(&self, date: impl chrono::Datelike) -> Result<Option<Journal>> {
-        self.read(
-            &self
-                .journal_dir
-                .join(format!("{:04}", date.year()))
-                .join(format!("{:02}", date.month()))
-                .join(format!("{:02}", date.day()))
-                .with_extension("toml"),
-        )
+    pub fn journal(&self, date: &impl chrono::Datelike) -> Result<Option<Journal>> {
+        self.read(&self.journal_path(date))
+    }
+
+    pub fn write_journal(&self, date: &impl chrono::Datelike, journal: &Journal) -> Result<()> {
+        Ok(fs::write(
+            self.journal_path(date),
+            toml::to_string_pretty(journal)?,
+        )?)
     }
 }
 
 // Journal is a record of food consumed during a day.
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Journal(HashMap<String, f32>);
 
 #[derive(tabled::Tabled, Default)]
@@ -280,17 +288,30 @@ fn main() -> Result<()> {
             RecipeCommand::Show { key } => todo!(),
         },
         Command::Journal { command } => match command {
-            JournalCommand::Edit { key } => todo!(),
-            JournalCommand::Show { key } => show_journal(&data),
+            JournalCommand::Edit { key } => edit_journal(&data, key),
+            JournalCommand::Show { key } => show_journal(&data, key),
         },
     }?;
 
     Ok(())
 }
 
-fn show_journal(data: &Data) -> Result<()> {
-    let now = chrono::Local::now();
-    let journal = data.journal(now)?.unwrap_or_default();
+fn edit_journal(data: &Data, key: Option<String>) -> Result<()> {
+    let date = match key {
+        Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
+        None => chrono::Local::now().date_naive(),
+    };
+    let journal = data.journal(&date)?.unwrap_or_default();
+    let journal = edit(&journal)?;
+    data.write_journal(&date, &journal)
+}
+
+fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
+    let date = match key {
+        Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
+        None => chrono::Local::now().date_naive(),
+    };
+    let journal = data.journal(&date)?.unwrap_or_default();
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
@@ -339,12 +360,11 @@ fn nom(data: &Data, food: &str, serving: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn edit_food(data: &Data, key: &str) -> Result<()> {
-    let food = data.food(key)?.unwrap_or_default();
+fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T> {
     let mut tmp = tempfile::Builder::new().suffix(".toml").tempfile()?;
-    tmp.write_all(toml::to_string_pretty(&food)?.as_bytes())?;
+    tmp.write_all(toml::to_string_pretty(&orig)?.as_bytes())?;
     tmp.flush()?;
-    log::debug!("Wrote {food:?} to {tmp:?}");
+    log::debug!("Wrote {orig:?} to {tmp:?}");
 
     let editor = std::env::var("EDITOR").context("EDITOR not set")?;
     let editor = which::which(editor)?;
@@ -361,11 +381,16 @@ fn edit_food(data: &Data, key: &str) -> Result<()> {
     let mut input = String::new();
     let mut file = fs::File::open(tmp.path())?;
     file.read_to_string(&mut input)?;
-    log::debug!("Read edited food: {input}");
+    log::debug!("Read: {input}");
 
-    let food: Food = toml::from_str(&input)?;
-    log::debug!("Parsed edited food: {food:?}");
+    let new: T = toml::from_str(&input)?;
+    log::debug!("Parsed: {new:?}");
+    Ok(new)
+}
 
+fn edit_food(data: &Data, key: &str) -> Result<()> {
+    let food = data.food(key)?.unwrap_or_default();
+    let food = edit(&food)?;
     data.write_food(key, &food)
 }
 
