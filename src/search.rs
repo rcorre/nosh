@@ -40,14 +40,14 @@ impl SearchFood {
         Nutrients {
             carb: self
                 .nutrient(Self::NUTRIENT_ID_CARB_DIFFERENCE)
-                .or(self.nutrient(Self::NUTRIENT_ID_CARB_SUMMATION))
+                .or_else(|| self.nutrient(Self::NUTRIENT_ID_CARB_SUMMATION))
                 .unwrap_or_default(),
             fat: self.nutrient(Self::NUTRIENT_ID_FAT).unwrap_or_default(),
             protein: self.nutrient(Self::NUTRIENT_ID_PROTEIN).unwrap_or_default(),
             kcal: self
                 .nutrient(Self::NUTRIENT_ID_ENERGY_ATWATER_SPECIFIC)
-                .or(self.nutrient(Self::NUTRIENT_ID_ENERGY_ATWATER_SPECIFIC))
-                .or(self.nutrient(Self::NUTRIENT_ID_ENERGY))
+                .or_else(|| self.nutrient(Self::NUTRIENT_ID_ENERGY_ATWATER_GENERAL))
+                .or_else(|| self.nutrient(Self::NUTRIENT_ID_ENERGY))
                 .unwrap_or_default(),
         }
     }
@@ -195,6 +195,85 @@ mod tests {
                         kcal: 196.0,
                     },
                     servings: vec![("g".into(), 100.0)],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_search_sr_legacy() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/test")).respond_with(
+                status_code(200).body(
+                    fs::read_to_string("tests/testdata/search/sr_legacy/page1.json").unwrap(),
+                ),
+            ),
+        );
+        let url = server.url("/test");
+
+        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        assert_eq!(
+            actual,
+            vec![
+                Food {
+                    name: "Bread, potato".into(),
+                    nutrients: Nutrients {
+                        carb: 47.1,
+                        fat: 3.13,
+                        protein: 12.5,
+                        kcal: 266.0,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+                Food {
+                    name: "Potato flour".into(),
+                    nutrients: Nutrients {
+                        carb: 83.1,
+                        fat: 0.34,
+                        protein: 6.9,
+                        kcal: 357.0,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_search_branded() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/test")).respond_with(
+                status_code(200)
+                    .body(fs::read_to_string("tests/testdata/search/branded/page1.json").unwrap()),
+            ),
+        );
+        let url = server.url("/test");
+
+        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        assert_eq!(
+            actual,
+            vec![
+                Food {
+                    name: "KASIA'S, POTATO PANCAKES, POTATO, POTATO".into(),
+                    nutrients: Nutrients {
+                        carb: 26.3,
+                        fat: 7.02,
+                        protein: 3.51,
+                        kcal: 158.0,
+                    },
+                    servings: vec![("GRM".into(), 57.0), ("PANCAKE".into(), 1.0)],
+                },
+                Food {
+                    name: "GNOCCHI WITH POTATO, POTATO".into(),
+                    nutrients: Nutrients {
+                        carb: 29.3,
+                        fat: 0.36,
+                        protein: 3.57,
+                        kcal: 136.0,
+                    },
+                    servings: vec![("g".into(), 140.0), ("cup".into(), 1.0)],
                 },
             ]
         );
