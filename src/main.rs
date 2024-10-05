@@ -22,8 +22,7 @@ const APP_NAME: &'static str = "nom";
 #[derive(clap::Args)]
 struct NomArgs {
     food: String,
-    quantity: Option<f32>,
-    unit: Option<String>,
+    serving: Option<String>,
 }
 
 #[derive(Subcommand)]
