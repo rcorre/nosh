@@ -57,7 +57,7 @@ impl CLI {
         };
         let dir = cli.data_dir.path().join("nosh");
         fs::create_dir_all(&dir).unwrap();
-        cp("tests/testdata", &dir);
+        cp("tests/testdata/good", &dir);
         cli
     }
 
@@ -354,40 +354,7 @@ fn test_food_search() {
     let server = Server::run();
     server.expect(
         Expectation::matching(request::method_path("GET", "/test")).respond_with(
-            status_code(200).body(
-                r#"{"foods":[{
-        "description": "Potato, NFS",
-        "servingSizeUnit": "g",
-        "servingSize": 144.0,
-        "householdServingFullText": "1 cup",
-        "foodNutrients": [
-            {
-              "nutrientId": 1003,
-              "nutrientName": "Protein",
-              "unitName": "G",
-              "value": 1.87
-            },
-            {
-              "nutrientId": 1004,
-              "nutrientName": "Total lipid (fat)",
-              "unitName": "G",
-              "value": 4.25
-            },
-            {
-              "nutrientId": 1005,
-              "nutrientName": "Carbohydrate, by difference",
-              "unitName": "G",
-              "value": 20.4
-            },
-            {
-              "nutrientId": 1008,
-              "nutrientName": "Energy",
-              "unitName": "KCAL",
-              "value": 126
-            }
-        ]
-    }]}"#,
-            ),
+            status_code(200).body(fs::read_to_string("tests/testdata/search/page0.json").unwrap()),
         ),
     );
     let url = server.url("/test");

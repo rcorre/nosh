@@ -1,0 +1,36 @@
+{
+  "foods": [
+    {
+      "description": "Potato, NFS",
+      "servingSizeUnit": "g",
+      "servingSize": 144.0,
+      "householdServingFullText": "1 cup",
+      "foodNutrients": [
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "unitName": "G",
+          "value": 1.87
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "unitName": "G",
+          "value": 4.25
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "unitName": "G",
+          "value": 20.4
+        },
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "unitName": "KCAL",
+          "value": 126
+        }
+      ]
+    }
+  ]
+}

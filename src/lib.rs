@@ -129,7 +129,7 @@ mod tests {
         let _ = env_logger::try_init();
         let tmp = tempfile::tempdir().unwrap();
         let data = Database::new(tmp.path()).unwrap();
-        cp("tests/testdata", &tmp);
+        cp("tests/testdata/good", &tmp);
         (data, tmp)
     }
 

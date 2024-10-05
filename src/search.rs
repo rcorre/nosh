@@ -102,3 +102,76 @@ pub fn search_food(term: &str, url: Option<&str>) -> Result<Vec<crate::Food>> {
     let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
     Ok(res.foods.iter().map(|x| crate::Food::from(x)).collect())
 }
+
+// mod tests {
+//     use super::*;
+//     use httptest::{matchers::*, responders::*, Expectation, Server};
+
+//     #[test]
+//     fn test_search() {
+//         let server = Server::run();
+//         server.expect(
+//             Expectation::matching(request::method_path("GET", "/test")).respond_with(
+//                 status_code(200).body(
+//                     r#"{"foods":[{
+//         "description": "Potato, NFS",
+//         "servingSizeUnit": "g",
+//         "servingSize": 144.0,
+//         "householdServingFullText": "1 cup",
+//         "foodNutrients": [
+//             {
+//               "nutrientId": 1003,
+//               "nutrientName": "Protein",
+//               "unitName": "G",
+//               "value": 1.87
+//             },
+//             {
+//               "nutrientId": 1004,
+//               "nutrientName": "Total lipid (fat)",
+//               "unitName": "G",
+//               "value": 4.25
+//             },
+//             {
+//               "nutrientId": 1005,
+//               "nutrientName": "Carbohydrate, by difference",
+//               "unitName": "G",
+//               "value": 20.4
+//             },
+//             {
+//               "nutrientId": 1008,
+//               "nutrientName": "Energy",
+//               "unitName": "KCAL",
+//               "value": 126
+//             }
+//         ]
+//     }]}"#,
+//                 ),
+//             ),
+//         );
+//         let url = server.url("/test");
+//         let food = &Food {
+//             name: "Potato, NFS".into(),
+//             nutrients: Nutrients {
+//                 carb: 20.4,
+//                 fat: 4.25,
+//                 protein: 1.87,
+//                 kcal: 126.0,
+//             },
+//             servings: [("g".to_string(), 144.0), ("cup".to_string(), 1.0)].into(),
+//         };
+
+//         cli.search(&url.to_string())
+//             .args(["food", "search", "potato"])
+//             .write_stdin("0") // select result 0
+//             .assert()
+//             .success()
+//             .stdout(matches_food(&food));
+
+//         // The food should have been added.
+//         cli.cmd()
+//             .args(["food", "show", "potato"])
+//             .assert()
+//             .success()
+//             .stdout(matches_food(&food));
+//     }
+// }
