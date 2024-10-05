@@ -78,9 +78,6 @@ fn main() -> Result<()> {
     let dirs = xdg::BaseDirectories::new()?;
     let data = Data::new(&dirs.create_data_directory(APP_NAME)?);
 
-    data.create_dirs()?;
-    log::debug!("Created directories: {data:?}");
-
     match args.command {
         Command::Nom { food, serving } => nom(&data, &food, serving),
         Command::Food { command } => match command {

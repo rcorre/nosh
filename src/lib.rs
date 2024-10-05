@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 // The macronutrients of a food.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, tabled::Tabled)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Nutrients {
     pub carb: f32,
     pub fat: f32,
@@ -88,6 +89,7 @@ fn test_nutrient_kcal_computation() {
 
 // Food describes a single food item.
 #[derive(Serialize, Deserialize, Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Food {
     // The display name of the food. This is shown in the UI.
     // Data files will reference the food by it's filename, not display name.
@@ -105,6 +107,11 @@ pub struct Food {
     // ```
     pub servings: HashMap<String, f32>,
 }
+
+// Journal is a record of food consumed during a day.
+#[derive(Serialize, Deserialize, Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Journal(pub HashMap<String, f32>);
 
 // Data provides access to the nom "database".
 // Nom stores all of it's data as TOML files using a particular directory structure:
@@ -144,14 +151,6 @@ impl Data {
         }
     }
 
-    // Ensure all necessary subdirectories exist.
-    pub fn create_dirs(&self) -> Result<()> {
-        fs::create_dir_all(&self.food_dir)?;
-        fs::create_dir_all(&self.recipe_dir)?;
-        fs::create_dir_all(&self.journal_dir)?;
-        Ok(())
-    }
-
     fn read<T: serde::de::DeserializeOwned>(&self, path: &Path) -> Result<Option<T>> {
         log::trace!("Reading {path:?}");
         match fs::read_to_string(&path) {
@@ -161,15 +160,21 @@ impl Data {
         }
     }
 
+    fn write<T: serde::Serialize + std::fmt::Debug>(&self, path: &Path, obj: &T) -> Result<()> {
+        log::trace!("Writing to {path:?}: {obj:?}");
+        fs::create_dir_all(
+            path.parent()
+                .ok_or(anyhow!("Missing parent dir: {path:?}"))?,
+        )?;
+        Ok(fs::write(&path, toml::to_string_pretty(obj)?)?)
+    }
+
     pub fn food(&self, key: &str) -> Result<Option<Food>> {
         self.read(&self.food_dir.join(key).with_extension("toml"))
     }
 
     pub fn write_food(&self, key: &str, food: &Food) -> Result<()> {
-        Ok(fs::write(
-            self.food_dir.join(key).with_extension("toml"),
-            toml::to_string_pretty(food)?,
-        )?)
+        self.write(&self.food_dir.join(key).with_extension("toml"), food)
     }
 
     fn journal_path(&self, date: &impl chrono::Datelike) -> PathBuf {
@@ -187,13 +192,49 @@ impl Data {
     }
 
     pub fn write_journal(&self, date: &impl chrono::Datelike, journal: &Journal) -> Result<()> {
-        Ok(fs::write(
-            self.journal_path(date),
-            toml::to_string_pretty(journal)?,
-        )?)
+        self.write(&self.journal_path(date), journal)
     }
 }
 
-// Journal is a record of food consumed during a day.
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct Journal(pub HashMap<String, f32>);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_food_data() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = Data::new(tmp.path());
+
+        let expected = Food {
+            name: "Oats".into(),
+            nutrients: Nutrients {
+                carb: 68.7,
+                fat: 5.89,
+                protein: 13.5,
+                kcal: 382.0,
+            },
+            servings: HashMap::from([("g".into(), 100.0)]),
+        };
+
+        data.write_food("oats", &expected).unwrap();
+        let actual = data.food("oats").unwrap().unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_journal_data() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = Data::new(tmp.path());
+
+        let expected = Journal(HashMap::from([
+            ("banana".to_string(), 1.0),
+            ("oats".to_string(), 2.0),
+            ("peanut_butter".to_string(), 1.5),
+        ]));
+
+        let date = &chrono::NaiveDate::from_ymd_opt(2024, 04, 02).unwrap();
+        data.write_journal(&date.clone(), &expected).unwrap();
+        let actual = data.journal(date).unwrap().unwrap();
+        assert_eq!(expected, actual);
+    }
+}
