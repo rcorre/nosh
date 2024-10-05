@@ -200,44 +200,44 @@ fn test_parse_serving() {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Journal(pub Vec<(String, Serving)>);
 
-// Data provides access to the nosh "database".
-// Nosh stores all of it's data as TOML files using a particular directory structure:
+// Database provides access to the nosh "database".
+// Nosh stores all of it's data as text files using a particular directory structure:
 // - $root/ (typically XDG_DATA_HOME)
 //
 //   - food/
-//     - apple.toml
-//     - banana.toml
+//     - apple.txt
+//     - banana.txt
 //
 //   - recipe/
-//     - cake.toml
-//     - pie.toml
+//     - cake.txt
+//     - pie.txt
 //
 //   - journal/
 //     - 2024/
 //       - 01/
-//         - 01.toml
-//         - 02.toml
+//         - 01.txt
+//         - 02.txt
 //     - 2023/
 //       - 12/
-//         - 30.toml
-//         - 31.toml
+//         - 30.txt
+//         - 31.txt
 #[derive(Debug)]
-pub struct Data {
+pub struct Database {
     food_dir: PathBuf,
     recipe_dir: PathBuf,
     journal_dir: PathBuf,
 }
 
-impl Data {
+impl Database {
     // Create a new database at the given root directory.
-    pub fn new(root_dir: &Path) -> Result<Data> {
+    pub fn new(root_dir: &Path) -> Result<Database> {
         let food_dir = root_dir.join("food");
         let recipe_dir = root_dir.join("recipe");
         let journal_dir = root_dir.join("journal");
         fs::create_dir_all(&food_dir)?;
         fs::create_dir_all(&recipe_dir)?;
         fs::create_dir_all(&journal_dir)?;
-        Ok(Data {
+        Ok(Database {
             food_dir,
             recipe_dir,
             journal_dir,
@@ -404,10 +404,10 @@ mod tests {
         }
     }
 
-    fn setup() -> (Data, tempfile::TempDir) {
+    fn setup() -> (Database, tempfile::TempDir) {
         let _ = env_logger::try_init();
         let tmp = tempfile::tempdir().unwrap();
-        let data = Data::new(tmp.path()).unwrap();
+        let data = Database::new(tmp.path()).unwrap();
         cp("tests/testdata", &tmp);
         (data, tmp)
     }
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn test_load_journal_not_exists() {
         let tmp = tempfile::tempdir().unwrap();
-        let data = Data::new(tmp.path()).unwrap();
+        let data = Database::new(tmp.path()).unwrap();
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
         let actual = data.load_journal(&date.clone()).unwrap();
         assert!(actual.is_none());
