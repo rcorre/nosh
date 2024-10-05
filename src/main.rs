@@ -9,7 +9,7 @@ use std::{
 };
 use tabled::{
     settings::{
-        object::Rows,
+        object::{Column, Rows},
         style::HorizontalLine,
         themes::{Colorization, ColumnNames},
         Color, Concat, Style,
@@ -306,7 +306,7 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
         bail!("Food with key {key} already exists");
     }
 
-    let term = term.unwrap_or(key);
+    let term = term.unwrap_or(key.clone());
 
     let client = reqwest::blocking::Client::new();
     let req = client
@@ -316,17 +316,36 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
         .build()?;
 
     log::debug!("Sending request: {req:?}");
-    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
-    let foods = res.foods.iter().map(|x| nom::Food::from(x));
 
-    let table = Table::new(foods)
-        .with(Style::sharp())
-        .with(Colorization::rows([
-            Color::BG_BLACK | Color::FG_BLACK,
-            Color::BG_BLACK | Color::FG_WHITE,
-        ]))
-        .to_string();
+    #[derive(tabled::Tabled)]
+    struct Index(#[tabled(rename = "index")] usize);
+    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
+    let foods: Vec<_> = res
+        .foods
+        .iter()
+        .enumerate()
+        .map(|(i, x)| (Index(i), nom::Food::from(x)))
+        .collect();
+
+    let table = Table::new(&foods).with(Style::sharp()).to_string();
     println!("{table}");
+
+    print!("\n[0-{}]? ", foods.len());
+    std::io::stdout().flush()?;
+
+    let mut res = String::new();
+    std::io::stdin().read_line(&mut res)?;
+    let res = res.trim();
+
+    if res.is_empty() {
+        log::debug!("Empty response, not adding any food");
+        return Ok(());
+    }
+
+    let idx: usize = res.parse()?;
+    let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
+    data.write_food(&key, &food)?;
+    println!("Added '{}' as {key}", food.name);
 
     Ok(())
 }
