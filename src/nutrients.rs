@@ -1,22 +1,10 @@
-fn float0(f: &f32) -> String {
-    format!("{:.0}", f)
-}
-
-fn float1(f: &f32) -> String {
-    format!("{:.1}", f)
-}
-
 // The macronutrients of a food.
-#[derive(Clone, Copy, Debug, Default, tabled::Tabled)]
+#[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Nutrients {
-    #[tabled(display_with = "float1")]
     pub carb: f32,
-    #[tabled(display_with = "float1")]
     pub fat: f32,
-    #[tabled(display_with = "float1")]
     pub protein: f32,
-    #[tabled(display_with = "float0")]
     pub kcal: f32,
 }
 
@@ -47,6 +35,12 @@ impl std::ops::Add<Nutrients> for Nutrients {
             protein: self.protein + rhs.protein,
             kcal: self.kcal + rhs.kcal,
         }
+    }
+}
+
+impl std::ops::AddAssign<Nutrients> for Nutrients {
+    fn add_assign(&mut self, rhs: Nutrients) {
+        *self = *self + rhs;
     }
 }
 

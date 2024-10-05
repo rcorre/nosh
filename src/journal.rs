@@ -1,4 +1,4 @@
-use crate::{Data, Food, Serving};
+use crate::{Data, Food, Nutrients, Serving};
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate};
 
@@ -54,6 +54,8 @@ impl Data for Journal {
             };
             let food = load_food(key)?;
             let food = food.with_context(|| format!("Food not found: {key}"))?;
+            // Check that the serving is actually valid for this food.
+            food.serve(&serving)?;
             rows.push(JournalEntry {
                 key: key.into(),
                 serving,
@@ -68,5 +70,16 @@ impl Data for Journal {
             writeln!(w, "{key} = {serving}")?;
         }
         Ok(())
+    }
+}
+
+impl Journal {
+    // Compute the total nutrients of this journal.
+    pub fn nutrients(&self) -> Result<Nutrients> {
+        let mut res = Nutrients::default();
+        for entry in &self.0 {
+            res += entry.food.serve(&entry.serving)?;
+        }
+        Ok(res)
     }
 }

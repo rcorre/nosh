@@ -51,12 +51,45 @@ struct Args {
     command: Command,
 }
 
-#[derive(tabled::Tabled, Default)]
+fn float0(f: &f32) -> String {
+    format!("{:.0}", f)
+}
+
+fn float1(f: &f32) -> String {
+    format!("{:.1}", f)
+}
+
+// The macronutrients of a food, adapted for display purposes.
+#[derive(tabled::Tabled)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct NutrientsRow {
+    #[tabled(display_with = "float1")]
+    pub carb: f32,
+    #[tabled(display_with = "float1")]
+    pub fat: f32,
+    #[tabled(display_with = "float1")]
+    pub protein: f32,
+    #[tabled(display_with = "float0")]
+    pub kcal: f32,
+}
+
+impl From<Nutrients> for NutrientsRow {
+    fn from(value: Nutrients) -> Self {
+        Self {
+            carb: value.carb,
+            fat: value.fat,
+            protein: value.protein,
+            kcal: value.kcal,
+        }
+    }
+}
+
+#[derive(tabled::Tabled)]
 struct FoodRow {
     key: String,
     name: String,
     #[tabled(inline)]
-    nutrients: Nutrients,
+    nutrients: NutrientsRow,
     servings: String,
 }
 
@@ -64,7 +97,7 @@ impl FoodRow {
     fn new(key: &str, food: &Food) -> Self {
         Self {
             key: key.into(),
-            nutrients: food.nutrients(),
+            nutrients: food.nutrients().into(),
             name: food.name.clone(),
             servings: food
                 .servings
@@ -76,12 +109,12 @@ impl FoodRow {
     }
 }
 
-#[derive(tabled::Tabled, Default)]
+#[derive(tabled::Tabled)]
 struct JournalRow {
     name: String,
     serving: Serving,
     #[tabled(inline)]
-    nutrients: Nutrients,
+    nutrients: NutrientsRow,
 }
 
 fn main() -> Result<()> {
@@ -131,13 +164,13 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
         .map(|entry| {
             Ok(JournalRow {
                 serving: entry.serving.clone(),
-                nutrients: entry.food.serve(&entry.serving)?,
+                nutrients: entry.food.serve(&entry.serving)?.into(),
                 name: entry.food.name.clone(),
             })
         })
         .collect();
     let rows = rows?;
-    let total: Nutrients = rows.iter().map(|x| x.nutrients).sum();
+    let total: NutrientsRow = journal.nutrients()?.into();
     let mut total = Table::new([[
         "Total".to_string(),
         "".to_string(),
