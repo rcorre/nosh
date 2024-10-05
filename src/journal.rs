@@ -1,6 +1,14 @@
 use crate::{Data, Food, Serving};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate};
+
+#[derive(Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct JournalEntry {
+    pub key: String,
+    pub serving: Serving,
+    pub food: Food,
+}
 
 // Journal is a record of food consumed during a day.
 // It is a list of "food = serving" lines.
@@ -13,7 +21,7 @@ use chrono::{Datelike, NaiveDate};
 // ```
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Journal(pub Vec<(String, Serving)>);
+pub struct Journal(pub Vec<JournalEntry>);
 
 impl Data for Journal {
     type Key = NaiveDate;
@@ -31,7 +39,7 @@ impl Data for Journal {
 
     fn load(
         r: impl std::io::BufRead,
-        load_food: impl FnMut(&str) -> Result<Option<Food>>,
+        mut load_food: impl FnMut(&str) -> Result<Option<Food>>,
     ) -> Result<Self> {
         let mut rows = vec![];
         for line in r.lines() {
@@ -40,17 +48,24 @@ impl Data for Journal {
             if line.is_empty() {
                 continue;
             }
-            match line.split_once("=") {
-                Some((food, serving)) => rows.push((food.trim().into(), serving.parse()?)),
-                None => rows.push((line.trim().into(), Serving::default())),
-            }
+            let (key, serving) = match line.split_once("=") {
+                Some((food, serving)) => (food.trim(), serving.parse()?),
+                None => (line.trim(), Serving::default()),
+            };
+            let food = load_food(key)?;
+            let food = food.with_context(|| format!("Food not found: {key}"))?;
+            rows.push(JournalEntry {
+                key: key.into(),
+                serving,
+                food,
+            });
         }
         Ok(Self(rows))
     }
 
     fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
-        for (food, serving) in &self.0 {
-            writeln!(w, "{food} = {serving}")?;
+        for JournalEntry { key, serving, .. } in &self.0 {
+            writeln!(w, "{key} = {serving}")?;
         }
         Ok(())
     }

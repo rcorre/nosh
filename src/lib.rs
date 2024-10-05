@@ -127,6 +127,7 @@ mod tests {
     use super::*;
     use crate::nutrients::Nutrients;
     use chrono::Datelike as _;
+    use pretty_assertions::assert_eq;
     use std::path::Path;
 
     //https://stackoverflow.com/a/65192210/1435461
@@ -181,12 +182,15 @@ mod tests {
     #[test]
     fn test_list_food() {
         let (data, _tmp) = setup();
-        let actual = data
+        let mut actual = data
             .list_food()
             .unwrap()
             .collect::<Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(actual, vec!["oats".to_string(), "banana".to_string()]);
+        let mut expected = vec!["oats".to_string(), "banana".to_string()];
+        actual.sort();
+        expected.sort();
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -233,7 +237,11 @@ mod tests {
     fn test_load_journal() {
         let (data, _tmp) = setup();
 
-        let serv = |food: &str, size, unit| (food.into(), Serving { size, unit });
+        let serv = |key: &str, size, unit| JournalEntry {
+            key: key.into(),
+            serving: Serving { size, unit },
+            food: data.load_food(key).unwrap().unwrap(),
+        };
         let expected = Journal(vec![
             serv("banana", 1.0, None),
             serv("oats", 0.5, Some("c".into())),
@@ -250,7 +258,11 @@ mod tests {
     fn test_save_journal() {
         let (data, tmp) = setup();
 
-        let serv = |food: &str, size, unit| (food.into(), Serving { size, unit });
+        let serv = |key: &str, size, unit| JournalEntry {
+            key: key.into(),
+            serving: Serving { size, unit },
+            ..Default::default()
+        };
         let expected = Journal(vec![
             serv("cookies", 1.0, None),
             serv("crackers", 0.5, Some("cups".into())),

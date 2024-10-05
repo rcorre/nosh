@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nosh::{Database, Food, Nutrients, Serving, APP_NAME};
+use nosh::{Database, Food, JournalEntry, Nutrients, Serving, APP_NAME};
 use std::{fs, io::Write};
 use tabled::{
     settings::{
@@ -103,15 +103,12 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (key, data.load_food(key), serving))
-        .map(|(key, food, serving)| match food {
-            Ok(Some(food)) => Ok(JournalRow {
-                serving: serving.clone(),
-                nutrients: food.serve(serving)?,
-                name: food.name,
-            }),
-            Ok(None) => Err(anyhow::format_err!("Food not found: {key}")),
-            Err(err) => Err(err),
+        .map(|entry| {
+            Ok(JournalRow {
+                serving: entry.serving.clone(),
+                nutrients: entry.food.serve(&entry.serving)?,
+                name: entry.food.name.clone(),
+            })
         })
         .collect();
     let rows = rows?;
@@ -160,7 +157,7 @@ fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
     log::debug!("Adding food={key} serving={serving} to {date:?}");
 
     let mut journal = data.load_journal(&date)?.unwrap_or_default();
-    journal.0.push((key, serving));
+    journal.0.push(JournalEntry { key, serving, food });
     data.save_journal(&date, &journal)
 }
 

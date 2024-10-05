@@ -188,7 +188,6 @@ fn test_eat() {
 }
 
 #[test]
-
 fn test_food_search() {
     use httptest::{matchers::*, responders::*, Expectation, Server};
 
