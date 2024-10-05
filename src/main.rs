@@ -204,15 +204,31 @@ fn show_food(data: &Database, key: &str) -> Result<()> {
     Ok(())
 }
 
-// TODO: include keys in data. Probably want to make key a non-serialized struct field.
-fn list_food(data: &Database, term: Option<String>) -> Result<()> {
-    let term = term.as_ref().map(|s| s.as_str());
-    let items = data.list::<Food>(&term)?;
+fn list_food(data: &Database, pattern: Option<String>) -> Result<()> {
+    let pattern = pattern.unwrap_or("".to_string());
+    log::debug!("Listing food matching '{pattern}'");
+    let items = data.list_food()?;
     #[derive(tabled::Tabled)]
     struct Key(#[tabled(rename = "key")] String);
     let mut items: Vec<_> = items
         .filter_map(|x| match x {
-            Ok((key, food)) => Some((Key(key), food)),
+            Ok(key) if key.contains(&pattern) => match data.load_food(&key) {
+                Ok(Some(food)) => Some((Key(key), food)),
+                Ok(None) => {
+                    // Should be there, as we just listed it.
+                    // Maybe something messed with the DB out of sync.
+                    log::error!("Food '{key}' not found");
+                    None
+                }
+                Err(err) => {
+                    log::error!("Failed to load food '{key}': {err:?}");
+                    None
+                }
+            },
+            Ok(key) => {
+                log::trace!("Food '{key}' does not match '{pattern}'");
+                None
+            }
             Err(err) => {
                 log::error!("Failed to list food: {err:?}");
                 None

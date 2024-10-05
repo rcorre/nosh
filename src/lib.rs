@@ -48,33 +48,19 @@ impl Database {
         Ok(Database { dir: dir.into() })
     }
 
-    // Return a list of (key, item) pairs.
-    // If `term` is Some, only return items containing `term`.
-    pub fn list<'a, T: Data>(
-        &self,
-        term: &'a Option<&str>,
-    ) -> Result<impl Iterator<Item = Result<(String, T)>> + 'a> {
-        let term = term.as_ref().unwrap_or(&"");
-        let dir = self.dir.join(T::DIR);
+    // Return a list of food keys.
+    pub fn list_food(&self) -> Result<impl Iterator<Item = Result<String>>> {
+        let dir = self.dir.join(Food::DIR);
         log::trace!("Listing {dir:?}");
-        Ok(fs::read_dir(&dir)?
-            .filter(move |e| match e {
-                Ok(e) => e.path().as_path().to_string_lossy().contains(term),
-                Err(_) => false, // propagate errors through
-            })
-            .map(|e| -> Result<(String, T)> {
-                let path = e?.path();
-                let f = fs::File::open(&path)?;
-                let r = std::io::BufReader::new(f);
-                let path = path.with_extension("");
-                let key = path
-                    .file_name()
-                    .with_context(|| format!("Invalid path: {path:?}"))?
-                    .to_str()
-                    .with_context(|| format!("Non UTF-8 path: {path:?}"))?;
-                let obj = T::load(r)?;
-                Ok((key.to_string(), obj))
-            }))
+        Ok(fs::read_dir(&dir)?.map(|e| -> Result<String> {
+            let path = e?.path().with_extension("");
+            let key = path
+                .file_name()
+                .with_context(|| format!("Invalid path: {path:?}"))?
+                .to_str()
+                .with_context(|| format!("Non UTF-8 path: {path:?}"))?;
+            Ok(key.into())
+        }))
     }
 
     pub fn save_food(&self, key: &str, data: &Food) -> Result<()> {
@@ -196,26 +182,11 @@ mod tests {
     fn test_list_food() {
         let (data, _tmp) = setup();
         let actual = data
-            .list::<Food>(&Some("oats"))
+            .list_food()
             .unwrap()
             .collect::<Result<Vec<_>>>()
             .unwrap();
-        assert_eq!(
-            actual,
-            vec![(
-                "oats".to_string(),
-                Food {
-                    name: "Oats".into(),
-                    nutrients: Nutrients {
-                        carb: 68.7,
-                        fat: 5.89,
-                        protein: 13.5,
-                        kcal: 382.0,
-                    },
-                    servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
-                }
-            )]
-        );
+        assert_eq!(actual, vec!["oats".to_string(), "banana".to_string()]);
     }
 
     #[test]
