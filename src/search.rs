@@ -95,6 +95,8 @@ impl SearchFood {
         }
     }
 
+    // BUG: Nutritional values appear to be always based on 100g.
+    // Look for a serving unit of "g" or "GRM", then adjust the nutrients accordingly.
     fn servings(&self) -> Vec<(String, f32)> {
         let mut res = Vec::new();
         if let (Some(unit), Some(size)) = (&self.serving_size_unit, self.serving_size) {

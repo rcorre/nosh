@@ -3,6 +3,14 @@ use crate::{nutrients::Nutrients, Data};
 
 use anyhow::{anyhow, bail, Context, Result};
 
+fn format_servings(servings: &Vec<(String, f32)>) -> String {
+    servings
+        .iter()
+        .map(|(unit, size)| format!("{size}{unit}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 // Food describes a single food item.
 #[derive(Debug, Default, tabled::Tabled)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -18,7 +26,7 @@ pub struct Food {
     // Ways of describing a single serving of this food.
     // For example, [("g", 100.0), ("cups", 0.5)] means that
     // either 100g or 0.5cups equates to one serving.
-    #[tabled(skip)]
+    #[tabled(display_with = "format_servings")]
     pub servings: Vec<(String, f32)>,
 }
 
