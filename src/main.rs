@@ -22,6 +22,7 @@ enum FoodCommand {
     Edit { key: String },
     Show { key: String },
     Ls { term: Option<String> },
+    Rm { key: String },
     Search { key: String, term: Option<String> },
 }
 
@@ -86,6 +87,7 @@ fn main() -> Result<()> {
             FoodCommand::Show { key } => show_food(&data, &key),
             FoodCommand::Search { key, term } => search_food(&data, key, term),
             FoodCommand::Ls { term } => list_food(&data, term),
+            FoodCommand::Rm { key } => rm_food(&data, key),
         },
         Command::Recipe { command } => match command {
             RecipeCommand::Edit { key } => todo!(),
@@ -244,6 +246,10 @@ fn list_food(data: &Data, term: Option<String>) -> Result<()> {
     }));
     println!("{}", table.with(Style::sharp()));
     Ok(())
+}
+
+fn rm_food(data: &Data, key: String) -> Result<()> {
+    data.remove_food(&key)
 }
 
 #[derive(Deserialize)]

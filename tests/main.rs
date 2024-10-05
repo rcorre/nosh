@@ -147,6 +147,24 @@ fn test_food_ls_pattern_nomatch() {
 }
 
 #[test]
+fn test_food_rm() {
+    let cli = CLI::new();
+
+    cli.cmd().args(["food", "rm", "oats"]).assert().success();
+    cli.cmd()
+        .args(["food", "ls"])
+        .assert()
+        .success()
+        .stdout(matches_food(&banana()));
+}
+
+#[test]
+fn test_food_rm_not_exist() {
+    let cli = CLI::new();
+    cli.cmd().args(["food", "rm", "nope"]).assert().failure();
+}
+
+#[test]
 fn test_food_edit_new() {
     let cli = CLI::new();
 

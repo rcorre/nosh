@@ -215,6 +215,12 @@ impl Data {
         self.list::<Food>(&self.food_dir, &term)
     }
 
+    pub fn remove_food<'a>(&self, key: &str) -> Result<()> {
+        Ok(std::fs::remove_file(
+            &self.food_dir.join(key).with_extension("toml"),
+        )?)
+    }
+
     pub fn write_food(&self, key: &str, food: &Food) -> Result<()> {
         self.write(&self.food_dir.join(key).with_extension("toml"), food)
     }
@@ -275,6 +281,9 @@ mod tests {
                 .unwrap()
         );
         assert!(data.list_food(&Some("nope")).unwrap().next().is_none());
+
+        data.remove_food("oats").unwrap();
+        assert!(data.list_food(&Some("oats")).unwrap().next().is_none());
     }
 
     #[test]
