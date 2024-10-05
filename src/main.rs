@@ -1,11 +1,8 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use nosh::{Database, Food, Journal, Nutrients, Serving, APP_NAME};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{
-    fs,
-    io::{Read, Write},
-};
+use serde::Deserialize;
+use std::{fs, io::Write};
 use tabled::{
     settings::{
         object::Rows,

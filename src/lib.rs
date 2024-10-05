@@ -11,7 +11,7 @@ pub use nutrients::*;
 pub use serving::*;
 
 use anyhow::{anyhow, bail, Context, Result};
-use chrono::Datelike;
+use chrono::Datelike as _;
 use std::fs;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -76,7 +76,7 @@ impl Database {
             path.parent()
                 .ok_or_else(|| anyhow!("No parent path: {path:?}"))?,
         )?;
-        let mut file = std::fs::File::create(&path).with_context(|| format!("Open {path:?}"))?;
+        let file = std::fs::File::create(&path).with_context(|| format!("Open {path:?}"))?;
         let mut writer = BufWriter::new(&file);
         data.save(&mut writer)?;
         Ok(())
@@ -133,12 +133,50 @@ mod tests {
     fn test_load_food() {
         let (data, _tmp) = setup();
         let oats: Food = data.load("oats").unwrap().unwrap();
-        assert_eq!(oats.name, "Oats");
-        assert_eq!(oats.nutrients.carb, 68.7);
-        assert_eq!(oats.nutrients.fat, 5.89);
-        assert_eq!(oats.nutrients.protein, 13.5);
-        assert_eq!(oats.nutrients.kcal, 382.0);
-        assert_eq!(oats.servings, [("cups".into(), 0.5), ("g".into(), 100.0)]);
+        assert_eq!(
+            oats,
+            Food {
+                name: "Oats".into(),
+                nutrients: Nutrients {
+                    carb: 68.7,
+                    fat: 5.89,
+                    protein: 13.5,
+                    kcal: 382.0,
+                },
+                servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
+            }
+        );
+    }
+
+    #[test]
+    fn test_load_food_not_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = Database::new(tmp.path()).unwrap();
+        let actual = data.load::<Food>("nope").unwrap();
+        assert!(actual.is_none());
+    }
+
+    #[test]
+    fn test_list_food() {
+        let (data, _tmp) = setup();
+        let actual = data
+            .list::<Food>(&Some("oats"))
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            actual,
+            vec![Food {
+                name: "Oats".into(),
+                nutrients: Nutrients {
+                    carb: 68.7,
+                    fat: 5.89,
+                    protein: 13.5,
+                    kcal: 382.0,
+                },
+                servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
+            }]
+        );
     }
 
     #[test]
