@@ -118,7 +118,7 @@ impl Data for Food {
     const DIR: &str = "food";
 
     fn path(key: &str) -> std::path::PathBuf {
-        ["food", key]
+        [Self::DIR, key]
             .iter()
             .collect::<std::path::PathBuf>()
             .with_extension("txt")

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nosh::{Database, Food, Journal, Nutrients, Serving, APP_NAME};
+use nosh::{Database, Food, Journal, Nutrients, Recipe, Serving, APP_NAME};
 use serde::Deserialize;
 use std::{fs, io::Write};
 use tabled::{
@@ -86,8 +86,8 @@ fn main() -> Result<()> {
             FoodCommand::Rm { key } => rm_food(&data, key),
         },
         Command::Recipe { command } => match command {
-            RecipeCommand::Edit { key } => todo!(),
-            RecipeCommand::Show { key } => todo!(),
+            RecipeCommand::Edit { key } => edit_recipe(&data, &key),
+            RecipeCommand::Show { key } => show_recipe(&data, &key),
         },
         Command::Journal { command } => match command {
             JournalCommand::Edit { key } => edit_journal(&data, key),
@@ -98,13 +98,65 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn edit_recipe(data: &Database, key: &str) -> Result<()> {
+    let recipe = data.load::<Recipe>(&key)?.unwrap_or_default();
+    let recipe = edit(&recipe)?;
+    data.save(key, &recipe)
+}
+
+fn show_recipe(data: &Database, key: &str) -> Result<()> {
+    let journal = data.load::<Recipe>(key)?.unwrap_or_default();
+    let rows: Result<Vec<_>> = journal
+        .0
+        .iter()
+        .map(|(key, serving)| (key, data.load::<Food>(key), serving))
+        .map(|(key, food, serving)| match food {
+            Ok(Some(food)) => Ok(JournalRow {
+                serving: serving.clone(),
+                nutrients: food.serve(serving)?,
+                name: food.name,
+            }),
+            Ok(None) => Err(anyhow::format_err!("Food not found: {key}")),
+            Err(err) => Err(err),
+        })
+        .collect();
+    let rows = rows?;
+    let total: Nutrients = rows
+        .iter()
+        .fold(Nutrients::default(), |a, b| a + b.nutrients);
+    let mut total = Table::new([[
+        "Total".to_string(),
+        "".to_string(),
+        format!("{:.1}", total.carb),
+        format!("{:.1}", total.fat),
+        format!("{:.1}", total.protein),
+        format!("{:.0}", total.kcal),
+    ]]);
+    total.with(ColumnNames::default());
+
+    let line = HorizontalLine::inherit(Style::modern());
+
+    let table = Table::new(rows)
+        .with(
+            Style::modern()
+                .remove_horizontals()
+                .horizontals([(1, line)]),
+        )
+        .with(Concat::vertical(total))
+        .with(Colorization::exact([Color::BOLD], Rows::last()))
+        .to_string();
+
+    println!("{table}");
+    Ok(())
+}
+
 fn edit_journal(data: &Database, key: Option<String>) -> Result<()> {
     let date = match key {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
     let journal = data.load::<Journal>(&date)?.unwrap_or_default();
-    // let journal = edit(&journal)?; // TODO
+    let journal = edit(&journal)?;
     data.save(&date, &journal)
 }
 
@@ -117,14 +169,14 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (data.load::<Food>(key), serving))
-        .map(|(food, serving)| match food {
+        .map(|(key, serving)| (key, data.load::<Food>(key), serving))
+        .map(|(key, food, serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 serving: serving.clone(),
                 nutrients: food.serve(serving)?,
                 name: food.name,
             }),
-            Ok(None) => Err(anyhow::format_err!("Food not found")),
+            Ok(None) => Err(anyhow::format_err!("Food not found: {key}")),
             Err(err) => Err(err),
         })
         .collect();

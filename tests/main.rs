@@ -416,3 +416,37 @@ fn test_food_search() {
         .success()
         .stdout(matches_food(&food));
 }
+
+#[test]
+fn test_journal_show() {
+    let cli = CLI::new();
+
+    cli.cmd()
+        .args(["recipe", "show", "banana_oatmeal"])
+        .assert()
+        .success()
+        .stdout(matches_serving_str("0.5 c", &oats()))
+        .stdout(matches_serving_str("150 g", &banana()));
+}
+
+#[test]
+fn test_journal_edit() {
+    let cli = CLI::new();
+
+    cli.editor(
+        r#"
+oats = 1.5c
+banana
+"#,
+    )
+    .args(["recipe", "edit", "banana_oatmeal"])
+    .assert()
+    .success();
+
+    cli.cmd()
+        .args(["recipe", "show", "banana_oatmeal"])
+        .assert()
+        .success()
+        .stdout(matches_serving_str("1.5 c", &oats()))
+        .stdout(matches_serving(1.0, &banana()));
+}

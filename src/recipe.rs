@@ -1,8 +1,7 @@
 use crate::{Data, Serving};
 use anyhow::Result;
-use chrono::{Datelike, NaiveDate};
 
-// Journal is a record of food consumed during a day.
+// Recipe is a collection of foods in various quantities.
 // It is a list of "food = serving" lines.
 // The serving is optional and defaults to 1.
 // For example:
@@ -13,20 +12,17 @@ use chrono::{Datelike, NaiveDate};
 // ```
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Journal(pub Vec<(String, Serving)>);
+pub struct Recipe(pub Vec<(String, Serving)>);
 
-impl Data for Journal {
-    type Key = NaiveDate;
-    const DIR: &str = "journal";
+impl Data for Recipe {
+    type Key = str;
+    const DIR: &str = "recipe";
 
-    fn path(key: &NaiveDate) -> std::path::PathBuf {
-        format!(
-            "journal/{:04}/{:02}/{:02}.txt",
-            key.year(),
-            key.month(),
-            key.day()
-        )
-        .into()
+    fn path(key: &str) -> std::path::PathBuf {
+        [Self::DIR, key]
+            .iter()
+            .collect::<std::path::PathBuf>()
+            .with_extension("txt")
     }
 
     fn load(r: impl std::io::BufRead) -> Result<Self> {

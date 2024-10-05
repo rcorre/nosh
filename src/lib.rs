@@ -2,12 +2,14 @@ pub mod data;
 pub mod food;
 pub mod journal;
 pub mod nutrients;
+pub mod recipe;
 pub mod serving;
 
 pub use data::*;
 pub use food::*;
 pub use journal::*;
 pub use nutrients::*;
+pub use recipe::*;
 pub use serving::*;
 
 use anyhow::{anyhow, bail, Context, Result};

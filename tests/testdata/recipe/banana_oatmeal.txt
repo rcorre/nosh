@@ -1,0 +1,2 @@
+oats = 0.5c
+banana = 150g
