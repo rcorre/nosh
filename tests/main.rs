@@ -1,6 +1,7 @@
 use std::{io::Write, os::unix::fs::OpenOptionsExt};
 
 use assert_cmd::Command;
+use nom::{Food, Nutrients};
 use predicates::prelude::*;
 
 struct CLI {
@@ -9,6 +10,7 @@ struct CLI {
 
 impl CLI {
     fn new() -> Self {
+        // let _ = env_logger::try_init();
         Self {
             data_dir: tempfile::tempdir().unwrap(),
         }
@@ -37,6 +39,12 @@ impl CLI {
         cmd.env("EDITOR", path);
         cmd
     }
+
+    fn add_food(&self, key: &str, food: &Food) {
+        let path = self.data_dir.path().join("nom");
+        log::info!("Test staging food to {path:?}: {food:?}");
+        nom::Data::new(&path).write_food(key, food).unwrap()
+    }
 }
 
 fn matches(pattern: &str) -> predicates::str::RegexPredicate {
@@ -51,15 +59,14 @@ fn test_show_food_missing() {
         .args(["food", "show", "nope"])
         .assert()
         .failure()
-        .stderr(predicate::str::starts_with(
-            "Error: No food with key \"nope\"",
-        ));
+        .stderr(predicate::str::contains("Error: No food with key \"nope\""));
 }
 
 #[test]
 fn test_edit_food() {
     let cli = CLI::new();
 
+    // Edit a new food
     cli.editor(
         r#"
 name = "Oats"
@@ -114,4 +121,76 @@ cups = 0.5
         .stdout(matches("kcal.*240"))
         .stdout(matches("g.*100"))
         .stdout(matches("cups.*0.5"));
+}
+
+#[test]
+fn test_nom_food_missing() {
+    let cli = CLI::new();
+
+    cli.cmd()
+        .args(["nom", "nope"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: No food with key \"nope\""));
+}
+
+#[test]
+fn test_nom() {
+    let cli = CLI::new();
+
+    cli.add_food(
+        "oats",
+        &Food {
+            name: "Oats".into(),
+            nutrients: Nutrients {
+                carb: 68.7,
+                fat: 5.89,
+                protein: 13.5,
+                kcal: 382.0,
+            },
+            servings: [("g".into(), 100.0)].into(),
+        },
+    );
+
+    cli.add_food(
+        "banana",
+        &Food {
+            name: "Banana".into(),
+            nutrients: Nutrients {
+                carb: 23.0,
+                fat: 0.20,
+                protein: 0.74,
+                kcal: 98.0,
+            },
+            servings: [("g".into(), 100.0)].into(),
+        },
+    );
+
+    // Add one serving
+    cli.cmd().args(["nom", "oats"]).assert().success();
+    cli.cmd()
+        .args(["journal", "show"])
+        .assert()
+        .success()
+        .stdout(matches("Oats.*1.*68.7.*5.89.*13.5.*382"))
+        .stdout(matches("Total.*1.*68.7.*5.89.*13.5.*382"));
+
+    // Add 2.5 servings
+    cli.cmd().args(["nom", "oats", "2.5"]).assert().success();
+    cli.cmd()
+        .args(["journal", "show"])
+        .assert()
+        .success()
+        .stdout(matches("Oats.*3.5.*240.44998.*20.615.*47.25.*1337"))
+        .stdout(matches("Total.*240.44998.*20.615.*47.25.*1337"));
+
+    // Add one serving of banana
+    cli.cmd().args(["nom", "banana"]).assert().success();
+    cli.cmd()
+        .args(["journal", "show"])
+        .assert()
+        .success()
+        .stdout(matches("Oats.*3.5.*240.44998.*20.615.*47.25.*1337"))
+        .stdout(matches("Banana.*1.*23.0.*0.2.*0.74.*98"))
+        .stdout(matches("Total.*240.44998.*20.615.*47.25.*1337"));
 }

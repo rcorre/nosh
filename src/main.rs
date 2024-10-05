@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use nom::{Data, Nutrients};
 use serde::{de::DeserializeOwned, Serialize};
@@ -79,7 +79,7 @@ fn main() -> Result<()> {
     let data = Data::new(&dirs.create_data_directory(APP_NAME)?);
 
     match args.command {
-        Command::Nom { food, serving } => nom(&data, &food, serving),
+        Command::Nom { food, serving } => nom(&data, food, serving),
         Command::Food { command } => match command {
             FoodCommand::Edit { key } => edit_food(&data, &key),
             FoodCommand::Show { key } => show_food(&data, &key),
@@ -157,8 +157,31 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn nom(data: &Data, food: &str, serving: Option<String>) -> Result<()> {
-    Ok(())
+fn nom(data: &Data, key: String, serving: Option<String>) -> Result<()> {
+    let Some(_food) = data.food(&key)? else {
+        bail!("No food with key {key:?}");
+    };
+    let serving = if let Some(serving) = serving {
+        if let Some((amount, _unit)) = serving.split_once(|c: char| !c.is_digit(10) && c != '.') {
+            amount.parse()?
+        } else {
+            serving.parse()?
+        }
+    } else {
+        1.0
+    };
+
+    let date = chrono::Local::now();
+    log::debug!("Adding food={key} serving={serving} to {date:?}");
+
+    let mut journal = data.journal(&date)?.unwrap_or_default();
+    journal
+        .0
+        .entry(key)
+        .and_modify(|x| *x += serving)
+        .or_insert(serving);
+
+    data.write_journal(&date, &journal)
 }
 
 fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T> {
