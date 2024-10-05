@@ -1,7 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use nosh::{Database, Food, Journal, Nutrients, Recipe, Serving, APP_NAME};
-use serde::Deserialize;
 use std::{fs, io::Write};
 use tabled::{
     settings::{
@@ -289,87 +288,6 @@ fn rm_food(data: &Database, key: String) -> Result<()> {
     data.remove::<Food>(&key)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchNutrient {
-    nutrient_id: u32,
-    value: f32,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchFood {
-    description: Option<String>,
-    serving_size: Option<f32>,                   // 144.0
-    serving_size_unit: Option<String>,           // "g"
-    household_serving_full_text: Option<String>, // "1 cup"
-    food_nutrients: Option<Vec<SearchNutrient>>,
-}
-
-impl SearchFood {
-    const NUTRIENT_ID_PROTEIN: u32 = 1003; // Protein
-    const NUTRIENT_ID_FAT: u32 = 1004; // Total lipid (fat)
-    const NUTRIENT_ID_CARB_DIFFERENCE: u32 = 1005; // Carbohydrate, by difference
-    const NUTRIENT_ID_ENERGY_KCAL: u32 = 1008; // Energy
-    const NUTRIENT_ID_CARB_SUMMATION: u32 = 1050; // Carbohydrate, by summation
-
-    fn nutrient(&self, id: u32) -> Option<f32> {
-        match &self.food_nutrients {
-            Some(n) => n.iter().find(|x| x.nutrient_id == id).map(|x| x.value),
-            None => None,
-        }
-    }
-
-    fn nutrients(&self) -> Nutrients {
-        Nutrients {
-            carb: self
-                .nutrient(Self::NUTRIENT_ID_CARB_DIFFERENCE)
-                .or(self.nutrient(Self::NUTRIENT_ID_CARB_SUMMATION))
-                .unwrap_or_default(),
-            fat: self.nutrient(Self::NUTRIENT_ID_FAT).unwrap_or_default(),
-            protein: self.nutrient(Self::NUTRIENT_ID_PROTEIN).unwrap_or_default(),
-            kcal: self
-                .nutrient(Self::NUTRIENT_ID_ENERGY_KCAL)
-                .unwrap_or_default(),
-        }
-    }
-
-    fn servings(&self) -> Vec<(String, f32)> {
-        let mut res = Vec::new();
-        if let (Some(unit), Some(size)) = (&self.serving_size_unit, self.serving_size) {
-            res.push((unit.clone(), size));
-        }
-        if let Some(serving) = self.household_serving_full_text.as_ref() {
-            let Some((amount, unit)) = serving.split_once(char::is_whitespace) else {
-                log::warn!("Failed to parse household serving: {serving}");
-                return res;
-            };
-            let Ok(amount) = amount.parse::<f32>() else {
-                log::warn!("Failed to parse household serving amount: {serving}");
-                return res;
-            };
-            res.push((unit.into(), amount));
-        }
-        res
-    }
-}
-
-impl From<&SearchFood> for nosh::Food {
-    fn from(value: &SearchFood) -> Self {
-        nosh::Food {
-            nutrients: value.nutrients(),
-            servings: value.servings(),
-            name: value.description.clone().unwrap_or_default(),
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchResponse {
-    foods: Vec<SearchFood>,
-}
-
 fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()> {
     if data.load::<Food>(&key)?.is_some() {
         bail!("Food with key {key} already exists");
@@ -377,36 +295,20 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     let term = term.unwrap_or(key.clone());
 
-    let client = reqwest::blocking::Client::new();
-
     // This is mostly here to allow injecting a url for testing.
-    let url = std::env::var("NOSH_SEARCH_URL");
-    let url = match url.as_ref() {
-        Ok(url) => url.as_str(),
-        Err(_) => "https://api.nal.usda.gov/fdc/v1/foods/search",
-    };
+    let url = std::env::var("NOSH_SEARCH_URL").ok();
+    let foods = nosh::search_food(&term, url.as_ref().map(String::as_str))?;
 
-    // https://fdc.nal.usda.gov/api-guide.html
-    let req = client
-        .get(url)
-        .header("X-Api-Key", "DEMO_KEY")
-        .query(&[("query", &term)])
-        .build()?;
-
-    log::debug!("Sending request: {req:?}");
-
-    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
-    if res.foods.is_empty() {
+    if foods.is_empty() {
         bail!("Found no foods matching '{term}'");
     }
 
     #[derive(tabled::Tabled)]
     struct Index(#[tabled(rename = "index")] usize);
-    let foods: Vec<_> = res
-        .foods
+    let foods: Vec<_> = foods
         .iter()
         .enumerate()
-        .map(|(i, x)| (Index(i), nosh::Food::from(x)))
+        .map(|(i, food)| (Index(i), food))
         .collect();
 
     let table = Table::new(&foods).with(Style::sharp()).to_string();
@@ -426,7 +328,7 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     let idx: usize = res.parse()?;
     let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
-    data.save(key.as_str(), food)?;
+    data.save(key.as_str(), *food)?;
     println!("Added '{}' as {key}", food.name);
 
     Ok(())
