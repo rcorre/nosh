@@ -83,7 +83,7 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
     let dirs = xdg::BaseDirectories::new()?;
-    let data = Data::new(&dirs.create_data_directory(APP_NAME)?);
+    let data = Data::new(&dirs.create_data_directory(APP_NAME)?)?;
 
     match args.command {
         Command::Eat { food, serving } => eat(&data, food, serving),
@@ -343,6 +343,8 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
     let term = term.unwrap_or(key.clone());
 
     let client = reqwest::blocking::Client::new();
+
+    // https://fdc.nal.usda.gov/api-guide.html
     let req = client
         .get("https://api.nal.usda.gov/fdc/v1/foods/search")
         .header("X-Api-Key", "DEMO_KEY")

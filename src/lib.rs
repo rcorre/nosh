@@ -158,13 +158,19 @@ pub struct Data {
 }
 
 impl Data {
-    // Create a new database from the given root directory.
-    pub fn new(root_dir: &Path) -> Data {
-        Data {
-            food_dir: root_dir.join("food"),
-            recipe_dir: root_dir.join("recipe"),
-            journal_dir: root_dir.join("journal"),
-        }
+    // Create a new database at the given root directory.
+    pub fn new(root_dir: &Path) -> Result<Data> {
+        let food_dir = root_dir.join("food");
+        let recipe_dir = root_dir.join("recipe");
+        let journal_dir = root_dir.join("journal");
+        fs::create_dir_all(&food_dir)?;
+        fs::create_dir_all(&recipe_dir)?;
+        fs::create_dir_all(&journal_dir)?;
+        Ok(Data {
+            food_dir,
+            recipe_dir,
+            journal_dir,
+        })
     }
 
     fn list<'a, T: serde::de::DeserializeOwned>(
@@ -199,7 +205,7 @@ impl Data {
         log::trace!("Writing to {path:?}: {obj:?}");
         fs::create_dir_all(
             path.parent()
-                .ok_or(anyhow!("Missing parent dir: {path:?}"))?,
+                .ok_or_else(|| anyhow!("Missing parent dir: {path:?}"))?,
         )?;
         Ok(fs::write(&path, toml::to_string_pretty(obj)?)?)
     }
@@ -251,7 +257,7 @@ mod tests {
     #[test]
     fn test_food_data() {
         let tmp = tempfile::tempdir().unwrap();
-        let data = Data::new(tmp.path());
+        let data = Data::new(tmp.path()).unwrap();
 
         let expected = Food {
             name: "Oats".into(),
@@ -289,7 +295,7 @@ mod tests {
     #[test]
     fn test_journal_data() {
         let tmp = tempfile::tempdir().unwrap();
-        let data = Data::new(tmp.path());
+        let data = Data::new(tmp.path()).unwrap();
 
         let expected = Journal(HashMap::from([
             ("banana".to_string(), 1.0),

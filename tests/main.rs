@@ -74,7 +74,10 @@ impl CLI {
     fn add_food(&self, key: &str, food: &Food) {
         let path = self.data_dir.path().join(APP_NAME);
         log::info!("Test staging food to {path:?}: {food:?}");
-        nosh::Data::new(&path).write_food(key, food).unwrap()
+        nosh::Data::new(&path)
+            .unwrap()
+            .write_food(key, food)
+            .unwrap()
     }
 }
 
