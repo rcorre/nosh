@@ -181,9 +181,9 @@ fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
     data.save_journal(&date, &journal)
 }
 
-fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T> {
-    let mut tmp = tempfile::Builder::new().suffix(".toml").tempfile()?;
-    tmp.write_all(toml::to_string_pretty(&orig)?.as_bytes())?;
+fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
+    let mut tmp = tempfile::Builder::new().suffix(".txt").tempfile()?;
+    orig.save(&mut std::io::BufWriter::new(&tmp))?;
     tmp.flush()?;
     log::debug!("Wrote {orig:?} to {tmp:?}");
 
@@ -199,12 +199,9 @@ fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T
     let status = cmd.spawn()?.wait()?;
     anyhow::ensure!(status.success(), "Editor exited with code: {status:?}");
 
-    let mut input = String::new();
-    let mut file = fs::File::open(tmp.path())?;
-    file.read_to_string(&mut input)?;
-    log::debug!("Read: {input}");
-
-    let new: T = toml::from_str(&input)?;
+    let file = fs::File::open(tmp.path())?;
+    let reader = std::io::BufReader::new(file);
+    let new = T::load(reader)?;
     log::debug!("Parsed: {new:?}");
     Ok(new)
 }

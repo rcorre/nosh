@@ -1,361 +1,22 @@
-use anyhow::{anyhow, bail, Context, Result};
+pub mod data;
+pub mod food;
+pub mod journal;
+pub mod nutrients;
+pub mod serving;
+
+pub use data::*;
+pub use food::*;
+pub use journal::*;
+pub use nutrients::*;
+pub use serving::*;
+
+use anyhow::{anyhow, bail, Result};
 use chrono::Datelike;
-use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
-
-fn float0(f: &f32) -> String {
-    format!("{:.0}", f)
-}
-
-fn float1(f: &f32) -> String {
-    format!("{:.1}", f)
-}
-
-// The macronutrients of a food.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, tabled::Tabled)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct Nutrients {
-    #[tabled(display_with = "float1")]
-    pub carb: f32,
-    #[tabled(display_with = "float1")]
-    pub fat: f32,
-    #[tabled(display_with = "float1")]
-    pub protein: f32,
-    #[tabled(display_with = "float0")]
-    pub kcal: f32,
-}
-
-impl Nutrients {
-    // If kcal is 0, compute it using the Atwater General Calculation:
-    // 4*carb + 4*protein + 9*fat.
-    // Note that there is a newer system that uses food-specific multipliers:
-    // See https://en.wikipedia.org/wiki/Atwater_system#Modified_system.
-    pub fn maybe_compute_kcal(self) -> Nutrients {
-        Nutrients {
-            kcal: if self.kcal > 0.0 {
-                self.kcal
-            } else {
-                self.carb * 4.0 + self.fat * 9.0 + self.protein * 4.0
-            },
-            ..self
-        }
-    }
-}
-impl std::ops::Add<Nutrients> for Nutrients {
-    type Output = Nutrients;
-
-    fn add(self, rhs: Nutrients) -> Self::Output {
-        Nutrients {
-            carb: self.carb + rhs.carb,
-            fat: self.fat + rhs.fat,
-            protein: self.protein + rhs.protein,
-            kcal: self.kcal + rhs.kcal,
-        }
-    }
-}
-
-impl std::ops::Mul<f32> for Nutrients {
-    type Output = Nutrients;
-
-    fn mul(self, rhs: f32) -> Self::Output {
-        Nutrients {
-            carb: self.carb * rhs,
-            fat: self.fat * rhs,
-            protein: self.protein * rhs,
-            kcal: self.kcal * rhs,
-        }
-    }
-}
-
-#[test]
-fn test_nutrient_mult() {
-    let nut = Nutrients {
-        carb: 1.2,
-        fat: 2.3,
-        protein: 3.1,
-        kcal: 124.5,
-    } * 2.0;
-
-    assert_eq!(nut.carb, 2.4);
-    assert_eq!(nut.fat, 4.6);
-    assert_eq!(nut.protein, 6.2);
-    assert_eq!(nut.kcal, 249.0);
-}
-
-#[test]
-fn test_nutrient_kcal_computation() {
-    let nut = Nutrients {
-        carb: 1.2,
-        fat: 2.3,
-        protein: 3.1,
-        kcal: 0.0,
-    }
-    .maybe_compute_kcal();
-
-    assert_eq!(nut.carb, 1.2);
-    assert_eq!(nut.fat, 2.3);
-    assert_eq!(nut.protein, 3.1);
-    assert_eq!(nut.kcal, 37.9);
-}
-
-// Food describes a single food item.
-#[derive(Serialize, Deserialize, Debug, Default, tabled::Tabled)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct Food {
-    // The display name of the food. This is shown in the UI.
-    // Data files will reference the food by it's filename, not display name.
-    pub name: String,
-
-    // The macronutrients of this food item.
-    #[tabled(inline)]
-    pub nutrients: Nutrients,
-
-    // Ways of describing a single serving of this food.
-    // For example, [("g", 100.0), ("cups", 0.5)] means that
-    // either 100g or 0.5cups equates to one serving.
-    #[tabled(skip)]
-    pub servings: Vec<(String, f32)>,
-}
-
-impl Food {
-    pub fn load(r: impl std::io::BufRead) -> Result<Self> {
-        let mut food = Food::default();
-        for line in r.lines() {
-            let line = line?;
-            log::trace!("Parsing food line: {line}");
-            let Some((k, v)) = line.rsplit_once("=") else {
-                bail!("Invalid food line, expected '=': {line}");
-            };
-            let (k, v) = (k.trim(), v.trim());
-            match k {
-                "name" => food.name = v.into(),
-                "kcal" => food.nutrients.kcal = v.parse()?,
-                "carb" => food.nutrients.carb = v.parse()?,
-                "fat" => food.nutrients.fat = v.parse()?,
-                "protein" => food.nutrients.protein = v.parse()?,
-                "serving" => {
-                    let idx = v
-                        .find(|c: char| c != '.' && !c.is_digit(10))
-                        .ok_or_else(|| anyhow!("Invalid serving: {v}"))?;
-                    let (size, unit) = v.split_at(idx);
-                    let size = size.trim();
-                    let unit = unit.trim();
-                    let size = size.parse().with_context(|| format!("Parsing '{size}'"))?;
-                    food.servings.push((unit.into(), size));
-                }
-                _ => bail!("Unexpected food key: {k}"),
-            }
-        }
-        Ok(food)
-    }
-
-    pub fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
-        let n = &self.nutrients;
-        writeln!(w, "name = {}", self.name)?;
-        writeln!(w, "carb = {}", n.carb)?;
-        writeln!(w, "fat = {}", n.fat)?;
-        writeln!(w, "protein = {}", n.protein)?;
-        writeln!(w, "kcal = {}", n.kcal)?;
-        for (unit, size) in &self.servings {
-            writeln!(w, "serving = {size} {unit}")?;
-        }
-        Ok(())
-    }
-
-    // Compute the nutrients in a serving of this food.
-    // Returns an error if the serving unit is not defined for this food.
-    pub fn serve(&self, s: &Serving) -> Result<Nutrients> {
-        let Some(unit) = &s.unit else {
-            return Ok(self.nutrients * s.size);
-        };
-
-        let mut matched = self.servings.iter().filter(|(u, _)| u.starts_with(unit));
-        let Some(first) = matched.next() else {
-            let units = self
-                .servings
-                .iter()
-                .cloned()
-                .map(|(unit, _)| unit)
-                .collect::<Vec<_>>();
-            bail!(
-                "Unknown serving unit {unit}, expected one of: {}",
-                units.join(", ")
-            );
-        };
-
-        if let Some(next) = matched.next() {
-            bail!(
-                "Serving unit '{unit}' ambiguous between '{}' and '{}'",
-                first.0,
-                next.0
-            );
-        }
-
-        let (_, size) = first;
-        Ok(self.nutrients * (s.size / *size))
-    }
-}
-
-#[test]
-fn test_food_serve() {
-    let food = Food {
-        name: "".into(),
-        nutrients: Nutrients {
-            carb: 12.0,
-            fat: 3.0,
-            protein: 8.0,
-            kcal: 120.0,
-        },
-        servings: vec![("g".into(), 100.0), ("cups".into(), 0.5)],
-    };
-    let serve = |size, unit: Option<&str>| {
-        food.serve(&Serving {
-            size,
-            unit: unit.map(str::to_string),
-        })
-    };
-    assert_eq!(
-        serve(2.0, None).unwrap(),
-        Nutrients {
-            carb: 24.0,
-            fat: 6.0,
-            protein: 16.0,
-            kcal: 240.0,
-        }
-    );
-    assert_eq!(
-        serve(2.0, Some("cups")).unwrap(),
-        Nutrients {
-            carb: 48.0,
-            fat: 12.0,
-            protein: 32.0,
-            kcal: 480.0,
-        }
-    );
-    assert_eq!(
-        serve(2.0, Some("c")).unwrap(),
-        Nutrients {
-            carb: 48.0,
-            fat: 12.0,
-            protein: 32.0,
-            kcal: 480.0,
-        }
-    );
-    assert_eq!(
-        serve(10.0, Some("g")).unwrap(),
-        Nutrients {
-            carb: 1.2,
-            fat: 0.3,
-            protein: 0.8,
-            kcal: 12.0,
-        }
-    );
-}
-
-// Serving is a portion of food, optionally paired with a unit.
-// Without a unit, it represents a portion of a serving, e.g. 1.5 servings.
-// Otherwise, it represents a quantity such as "150 grams".
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct Serving {
-    pub size: f32,
-    pub unit: Option<String>,
-}
-
-impl Default for Serving {
-    fn default() -> Self {
-        Self {
-            size: 1.0,
-            unit: None,
-        }
-    }
-}
-
-impl std::fmt::Display for Serving {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.unit {
-            Some(unit) => write!(f, "{} {}", self.size, unit),
-            None => write!(f, "{}", self.size),
-        }
-    }
-}
-
-// A serving can be parsed from a strings of form:
-// "1.5", "1.5cups", "1.5 cups"
-impl FromStr for Serving {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
-        let s = s.trim();
-        let (size, unit) = match s.find(|c: char| c != '.' && !c.is_digit(10)) {
-            Some(idx) => {
-                let (size, unit) = s.split_at(idx);
-                (size.trim(), Some(unit.trim()))
-            }
-            None => (s, None),
-        };
-        let size = size.parse().with_context(|| format!("Parsing '{size}'"))?;
-        Ok(Self {
-            size,
-            unit: unit.map(str::to_string),
-        })
-    }
-}
-
-#[test]
-fn test_parse_serving() {
-    let parse = |s: &str| s.parse::<Serving>();
-    let serv = |size, unit: Option<&str>| Serving {
-        size,
-        unit: unit.map(str::to_string),
-    };
-    assert_eq!(parse("1.5").unwrap(), serv(1.5, None));
-    assert_eq!(parse("1.5c").unwrap(), serv(1.5, Some("c")));
-    assert_eq!(parse("1.5 cup").unwrap(), serv(1.5, Some("cup")));
-    assert_eq!(parse(" 1.5  cup ").unwrap(), serv(1.5, Some("cup")));
-    assert_eq!(parse("25 g dry").unwrap(), serv(25.0, Some("g dry")));
-    assert_eq!(parse("25g dry").unwrap(), serv(25.0, Some("g dry")));
-    assert!(parse("cup 1.5").is_err());
-}
-
-// Journal is a record of food consumed during a day.
-// It is a list of "food: serving" lines.
-// The serving is optional and defaults to 1.
-// For example:
-// ```
-// oats: 0.5 cup
-// banana: 1
-// berries
-// ```
-#[derive(Debug, Default)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct Journal(pub Vec<(String, Serving)>);
-
-impl Journal {
-    pub fn load(r: impl std::io::BufRead) -> Result<Self> {
-        let mut rows = vec![];
-        for line in r.lines() {
-            let line = line?;
-            match line.split_once("=") {
-                Some((food, serving)) => rows.push((food.trim().into(), serving.parse()?)),
-                None => rows.push((line.trim().into(), Serving::default())),
-            }
-        }
-        Ok(Self(rows))
-    }
-
-    pub fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
-        for (food, serving) in &self.0 {
-            writeln!(w, "{food} = {serving}")?;
-        }
-        Ok(())
-    }
-}
 
 // Database provides access to the nosh "database".
 // Nosh stores all of it's data as text files using a particular directory structure:
@@ -401,7 +62,7 @@ impl Database {
         })
     }
 
-    fn list<'a, T: serde::de::DeserializeOwned>(
+    fn list<'a, T: Data>(
         &self,
         dir: &Path,
         term: &'a Option<&str>,
@@ -414,8 +75,9 @@ impl Database {
                 Err(_) => false, // propagate errors through
             })
             .map(|e| -> Result<T> {
-                let s = fs::read_to_string(e?.path())?;
-                let t: T = toml::from_str(&s)?;
+                let f = fs::File::open(e?.path())?;
+                let r = std::io::BufReader::new(f);
+                let t = T::load(r)?;
                 Ok(t)
             }))
     }
@@ -454,17 +116,13 @@ impl Database {
         &self,
         term: &'a Option<&str>,
     ) -> Result<impl Iterator<Item = Result<Food>> + 'a> {
-        self.list::<Food>(&self.food_dir, &term)
+        self.list(&self.food_dir, term)
     }
 
     pub fn remove_food<'a>(&self, key: &str) -> Result<()> {
         Ok(std::fs::remove_file(
             &self.food_dir.join(key).with_extension("toml"),
         )?)
-    }
-
-    pub fn write_food(&self, key: &str, food: &Food) -> Result<()> {
-        self.write(&self.food_dir.join(key).with_extension("toml"), food)
     }
 
     fn journal_path(&self, date: &impl Datelike) -> PathBuf {
@@ -500,6 +158,8 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    use crate::nutrients::Nutrients;
+
     use super::*;
 
     //https://stackoverflow.com/a/65192210/1435461
