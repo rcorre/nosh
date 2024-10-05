@@ -21,6 +21,7 @@ use tabled::{
 enum FoodCommand {
     Edit { key: String },
     Show { key: String },
+    Ls { term: Option<String> },
     Search { key: String, term: Option<String> },
 }
 
@@ -84,6 +85,7 @@ fn main() -> Result<()> {
             FoodCommand::Edit { key } => edit_food(&data, &key),
             FoodCommand::Show { key } => show_food(&data, &key),
             FoodCommand::Search { key, term } => search_food(&data, key, term),
+            FoodCommand::Ls { term } => list_food(&data, term),
         },
         Command::Recipe { command } => match command {
             RecipeCommand::Edit { key } => todo!(),
@@ -117,7 +119,7 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (data.food(key), serving))
+        .map(|(key, serving)| (data.get_food(key), serving))
         .map(|(food, &serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 name: food.name,
@@ -159,7 +161,7 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
 }
 
 fn nosh(data: &Data, key: String, serving: Option<String>) -> Result<()> {
-    let Some(_food) = data.food(&key)? else {
+    let Some(_food) = data.get_food(&key)? else {
         bail!("No food with key {key:?}");
     };
     let serving = if let Some(serving) = serving {
@@ -214,19 +216,34 @@ fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T
 }
 
 fn edit_food(data: &Data, key: &str) -> Result<()> {
-    let food = data.food(key)?.unwrap_or_default();
+    let food = data.get_food(key)?.unwrap_or_default();
     let food = edit(&food)?;
     data.write_food(key, &food)
 }
 
 fn show_food(data: &Data, key: &str) -> Result<()> {
-    match data.food(key)? {
+    match data.get_food(key)? {
         Some(food) => {
             println!("{food:#?}");
             Ok(())
         }
         None => Err(anyhow!("No food with key {key:?}")),
     }
+}
+
+// TODO: include keys in data. Probably want to make key a non-serialized struct field.
+fn list_food(data: &Data, term: Option<String>) -> Result<()> {
+    let term = term.as_ref().map(|s| s.as_str());
+    let items = data.list_food(&term)?;
+    let mut table = Table::new(items.filter_map(|x| match x {
+        Ok(food) => Some(food),
+        Err(err) => {
+            log::error!("Failed to list food: {err:?}");
+            None
+        }
+    }));
+    println!("{}", table.with(Style::sharp()));
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -300,7 +317,7 @@ struct SearchResponse {
 }
 
 fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
-    if data.food(&key)?.is_some() {
+    if data.get_food(&key)?.is_some() {
         bail!("Food with key {key} already exists");
     }
 

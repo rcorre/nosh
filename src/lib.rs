@@ -167,6 +167,25 @@ impl Data {
         }
     }
 
+    fn list<'a, T: serde::de::DeserializeOwned>(
+        &self,
+        dir: &Path,
+        term: &'a Option<&str>,
+    ) -> Result<impl Iterator<Item = Result<T>> + 'a> {
+        log::trace!("Listing {dir:?}");
+        let term = term.as_ref().unwrap_or(&"");
+        Ok(fs::read_dir(&dir)?
+            .filter(move |e| match e {
+                Ok(e) => e.path().as_path().to_string_lossy().contains(term),
+                Err(_) => false, // propagate errors through
+            })
+            .map(|e| -> Result<T> {
+                let s = fs::read_to_string(e?.path())?;
+                let t: T = toml::from_str(&s)?;
+                Ok(t)
+            }))
+    }
+
     fn read<T: serde::de::DeserializeOwned>(&self, path: &Path) -> Result<Option<T>> {
         log::trace!("Reading {path:?}");
         match fs::read_to_string(&path) {
@@ -185,8 +204,15 @@ impl Data {
         Ok(fs::write(&path, toml::to_string_pretty(obj)?)?)
     }
 
-    pub fn food(&self, key: &str) -> Result<Option<Food>> {
+    pub fn get_food(&self, key: &str) -> Result<Option<Food>> {
         self.read(&self.food_dir.join(key).with_extension("toml"))
+    }
+
+    pub fn list_food<'a>(
+        &self,
+        term: &'a Option<&str>,
+    ) -> Result<impl Iterator<Item = Result<Food>> + 'a> {
+        self.list::<Food>(&self.food_dir, &term)
     }
 
     pub fn write_food(&self, key: &str, food: &Food) -> Result<()> {
@@ -233,8 +259,22 @@ mod tests {
         };
 
         data.write_food("oats", &expected).unwrap();
-        let actual = data.food("oats").unwrap().unwrap();
+        let actual = data.get_food("oats").unwrap().unwrap();
         assert_eq!(expected, actual);
+
+        assert_eq!(
+            expected,
+            data.list_food(&None).unwrap().next().unwrap().unwrap()
+        );
+        assert_eq!(
+            expected,
+            data.list_food(&Some("oat"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+        );
+        assert!(data.list_food(&Some("nope")).unwrap().next().is_none());
     }
 
     #[test]
