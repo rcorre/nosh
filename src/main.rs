@@ -310,10 +310,10 @@ impl SearchFood {
         }
     }
 
-    fn servings(&self) -> HashMap<String, f32> {
-        let mut res = HashMap::new();
+    fn servings(&self) -> Vec<(String, f32)> {
+        let mut res = Vec::new();
         if let (Some(unit), Some(size)) = (&self.serving_size_unit, self.serving_size) {
-            res.insert(unit.clone(), size);
+            res.push((unit.clone(), size));
         }
         if let Some(serving) = self.household_serving_full_text.as_ref() {
             let Some((amount, unit)) = serving.split_once(char::is_whitespace) else {
@@ -324,7 +324,7 @@ impl SearchFood {
                 log::warn!("Failed to parse household serving amount: {serving}");
                 return res;
             };
-            res.insert(unit.into(), amount);
+            res.push((unit.into(), amount));
         }
         res
     }

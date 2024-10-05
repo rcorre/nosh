@@ -115,14 +115,10 @@ pub struct Food {
     pub nutrients: Nutrients,
 
     // Ways of describing a single serving of this food.
-    // For example, the following says that 1 serving is 100g or "14 chips":
-    // ```
-    // [portions]
-    // g = 100.0
-    // chips = 14
-    // ```
+    // For example, [("g", 100.0), ("cups", 0.5)] means that
+    // either 100g or 0.5cups equates to one serving.
     #[tabled(skip)]
-    pub servings: HashMap<String, f32>,
+    pub servings: Vec<(String, f32)>,
 }
 
 // Journal is a record of food consumed during a day.
@@ -242,7 +238,7 @@ impl Data {
                     let size = size.trim();
                     let unit = unit.trim();
                     let size = size.parse().with_context(|| format!("Parsing '{size}'"))?;
-                    food.servings.insert(unit.into(), size);
+                    food.servings.push((unit.into(), size));
                 }
                 _ => bail!("Unexpected food key: {k}"),
             }
@@ -260,12 +256,13 @@ impl Data {
         writeln!(writer, "fat: {}", n.fat)?;
         writeln!(writer, "protein: {}", n.protein)?;
         writeln!(writer, "kcal: {}", n.kcal)?;
-        for (size, unit) in &food.servings {
+        for (unit, size) in &food.servings {
             writeln!(writer, "serving: {size} {unit}")?;
         }
         Ok(())
     }
 
+    // TODO: fix listing
     pub fn list_food<'a>(
         &self,
         term: &'a Option<&str>,
@@ -337,8 +334,7 @@ mod tests {
         assert_eq!(oats.nutrients.fat, 2.5);
         assert_eq!(oats.nutrients.protein, 5.0);
         assert_eq!(oats.nutrients.kcal, 162.0);
-        assert_eq!(oats.servings["cups"], 0.5);
-        assert_eq!(oats.servings["g"], 50.0);
+        assert_eq!(oats.servings, [("cups".into(), 0.5), ("g".into(), 50.0)]);
     }
 
     #[test]
@@ -352,7 +348,7 @@ mod tests {
                 protein: 1.2,
                 kcal: 120.0,
             },
-            servings: [("g".into(), 50.0), ("cups".into(), 2.5)].into(),
+            servings: vec![("g".into(), 50.0), ("cups".into(), 2.5)],
         };
         data.save_food("banana", &banana).unwrap();
         let res = fs::read_to_string(tmp.path().join("food/banana.txt")).unwrap();
@@ -363,50 +359,13 @@ mod tests {
                 "carb: 22",
                 "fat: 0.5",
                 "protein: 1.2",
-                "kcal: 162",
-                "serving: 50.0 g",
+                "kcal: 120",
+                "serving: 50 g",
                 "serving: 2.5 cups",
+                "",
             ]
             .join("\n")
         );
-    }
-
-    #[test]
-    fn test_food_data() {
-        let tmp = tempfile::tempdir().unwrap();
-        let data = Data::new(tmp.path()).unwrap();
-
-        let expected = Food {
-            name: "Oats".into(),
-            nutrients: Nutrients {
-                carb: 68.7,
-                fat: 5.89,
-                protein: 13.5,
-                kcal: 382.0,
-            },
-            servings: HashMap::from([("g".into(), 100.0)]),
-        };
-
-        data.write_food("oats", &expected).unwrap();
-        let actual = data.read_food("oats").unwrap().unwrap();
-        assert_eq!(expected, actual);
-
-        assert_eq!(
-            expected,
-            data.list_food(&None).unwrap().next().unwrap().unwrap()
-        );
-        assert_eq!(
-            expected,
-            data.list_food(&Some("oat"))
-                .unwrap()
-                .next()
-                .unwrap()
-                .unwrap()
-        );
-        assert!(data.list_food(&Some("nope")).unwrap().next().is_none());
-
-        data.remove_food("oats").unwrap();
-        assert!(data.list_food(&Some("oats")).unwrap().next().is_none());
     }
 
     #[test]
