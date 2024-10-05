@@ -203,15 +203,10 @@ fn test_food_edit_new() {
 
     cli.editor(
         r#"
-name = "Lemon"
-[nutrients]
+name = Lemon
 carb = 4.0
-fat = 0
-protein = 0
 kcal = 16
-[servings]
-g = 100.0
-        "#,
+"#,
     )
     .args(["food", "edit", "lemon"])
     .assert()
@@ -221,11 +216,16 @@ g = 100.0
         .args(["food", "show", "lemon"])
         .assert()
         .success()
-        .stdout(matches("carb.*4.0"))
-        .stdout(matches("fat.*0.0"))
-        .stdout(matches("protein.*0.0"))
-        .stdout(matches("kcal.*16"))
-        .stdout(matches("g.*100"));
+        .stdout(matches_food(&Food {
+            name: "Lemon".into(),
+            nutrients: Nutrients {
+                carb: 4.0,
+                fat: 0.0,
+                protein: 0.0,
+                kcal: 16.0,
+            },
+            servings: vec![],
+        }));
 }
 
 #[test]
@@ -234,16 +234,13 @@ fn test_food_edit_existing() {
 
     cli.editor(
         r#"
-name = "Oats"
-[nutrients]
-carb = 40.0
-fat = 7.10
-protein = 14.0
-kcal = 240
-[servings]
-g = 100.0
-cups = 0.5
-        "#,
+name = Oats2
+carb = 30.0
+fat = 8.10
+protein = 24.0
+kcal = 480
+serving = 200.0 g
+serving = 2.5cups"#,
     )
     .args(["food", "edit", "oats"])
     .assert()
@@ -253,12 +250,16 @@ cups = 0.5
         .args(["food", "show", "oats"])
         .assert()
         .success()
-        .stdout(matches("carb.*40.0"))
-        .stdout(matches("fat.*7.1"))
-        .stdout(matches("protein.*14.0"))
-        .stdout(matches("kcal.*240"))
-        .stdout(matches("g.*100"))
-        .stdout(matches("cups.*0.5"));
+        .stdout(matches_food(&Food {
+            name: "Oats2".into(),
+            nutrients: Nutrients {
+                carb: 30.0,
+                fat: 8.1,
+                protein: 24.0,
+                kcal: 480.0,
+            },
+            servings: vec![("g".into(), 200.0), ("cups".into(), 2.5)],
+        }));
 }
 
 #[test]

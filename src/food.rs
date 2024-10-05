@@ -128,6 +128,10 @@ impl Data for Food {
         let mut food = Food::default();
         for line in r.lines() {
             let line = line?;
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
             log::trace!("Parsing food line: {line}");
             let Some((k, v)) = line.rsplit_once("=") else {
                 bail!("Invalid food line, expected '=': {line}");
