@@ -331,4 +331,30 @@ mod tests {
             .join("\n")
         );
     }
+
+    #[test]
+    fn test_load_recipe() {
+        let (data, _tmp) = setup();
+        let actual = data.load::<Recipe>("banana_oatmeal").unwrap().unwrap();
+        let expected = Recipe {
+            name: "Banana Oatmeal".into(),
+            ingredients: vec![
+                (
+                    "oats".into(),
+                    Serving {
+                        size: 0.5,
+                        unit: Some("c".into()),
+                    },
+                ),
+                (
+                    "banana".into(),
+                    Serving {
+                        size: 150.0,
+                        unit: Some("g".into()),
+                    },
+                ),
+            ],
+        };
+        assert_eq!(actual, expected,);
+    }
 }

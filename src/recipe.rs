@@ -32,11 +32,12 @@ impl Data for Recipe {
         let mut res = Recipe::default();
         for line in r.lines() {
             let line = line?;
+            log::trace!("Parsing recipe line: {line}");
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
-            match line.split_once("=") {
+            match line.split_once("=").map(|(a, b)| (a.trim(), b.trim())) {
                 Some(("name", name)) => res.name = name.into(),
                 Some((food, serving)) => {
                     res.ingredients.push((food.trim().into(), serving.parse()?))
