@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     let data = Data::new(&dirs.create_data_directory(APP_NAME)?);
 
     match args.command {
-        Command::Eat { food, serving } => nosh(&data, food, serving),
+        Command::Eat { food, serving } => eat(&data, food, serving),
         Command::Food { command } => match command {
             FoodCommand::Edit { key } => edit_food(&data, &key),
             FoodCommand::Show { key } => show_food(&data, &key),
@@ -167,13 +167,21 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn nosh(data: &Data, key: String, serving: Option<String>) -> Result<()> {
-    let Some(_food) = data.get_food(&key)? else {
+fn eat(data: &Data, key: String, serving: Option<String>) -> Result<()> {
+    let Some(food) = data.get_food(&key)? else {
         bail!("No food with key {key:?}");
     };
     let serving = if let Some(serving) = serving {
-        if let Some((amount, _unit)) = serving.split_once(|c: char| !c.is_digit(10) && c != '.') {
-            amount.parse()?
+        if let Some(idx) = serving.find(|c: char| !c.is_digit(10) && c != '.') {
+            let (amount, unit) = serving.split_at(idx);
+            let mut matches = food.servings.iter().filter(|(k, _)| k.starts_with(unit));
+            let Some((matched_unit, matched_size)) = matches.next() else {
+                bail!("No serving unit matches '{unit}'");
+            };
+            if let Some((next, _)) = matches.next() {
+                bail!("Unit {unit} is ambiguous between '{matched_unit}' and '{next}'");
+            }
+            amount.parse::<f32>()? / matched_size
         } else {
             serving.parse()?
         }
@@ -275,11 +283,11 @@ struct SearchFood {
 }
 
 impl SearchFood {
-    const NUTRIENT_ID_PROTEIN: u32 = 1003; //Protein
-    const NUTRIENT_ID_FAT: u32 = 1004; //Total lipid (fat)
-    const NUTRIENT_ID_CARB_DIFFERENCE: u32 = 1005; //Carbohydrate, by difference
+    const NUTRIENT_ID_PROTEIN: u32 = 1003; // Protein
+    const NUTRIENT_ID_FAT: u32 = 1004; // Total lipid (fat)
+    const NUTRIENT_ID_CARB_DIFFERENCE: u32 = 1005; // Carbohydrate, by difference
     const NUTRIENT_ID_ENERGY_KCAL: u32 = 1008; // Energy
-    const NUTRIENT_ID_CARB_SUMMATION: u32 = 1050; //Carbohydrate, by summation
+    const NUTRIENT_ID_CARB_SUMMATION: u32 = 1050; // Carbohydrate, by summation
 
     fn nutrient(&self, id: u32) -> Option<f32> {
         match &self.food_nutrients {

@@ -17,7 +17,7 @@ fn oats() -> Food {
             protein: 13.5,
             kcal: 382.0,
         },
-        servings: [("g".into(), 100.0)].into(),
+        servings: [("g".into(), 100.0), ("cups".into(), 0.5)].into(),
     }
 }
 
@@ -290,4 +290,24 @@ fn test_eat() {
         .stdout(matches_serving(3.5, &oats()))
         .stdout(matches_serving(1.0, &banana()))
         .stdout(matches_total(&[(3.5, &oats()), (1.0, &banana())]));
+
+    // Add one cup (two servings) of oats
+    cli.cmd().args(["eat", "oats", "1cups"]).assert().success();
+    cli.cmd()
+        .args(["journal", "show"])
+        .assert()
+        .success()
+        .stdout(matches_serving(5.5, &oats()))
+        .stdout(matches_serving(1.0, &banana()))
+        .stdout(matches_total(&[(5.5, &oats()), (1.0, &banana())]));
+
+    // Add 0.25 cup (half serving) of oats
+    cli.cmd().args(["eat", "oats", "0.25c"]).assert().success();
+    cli.cmd()
+        .args(["journal", "show"])
+        .assert()
+        .success()
+        .stdout(matches_serving(6.0, &oats()))
+        .stdout(matches_serving(1.0, &banana()))
+        .stdout(matches_total(&[(6.0, &oats()), (1.0, &banana())]));
 }
