@@ -307,39 +307,45 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
         search.url = &url;
     };
 
-    let foods = search.next_page()?;
-    let mut foods = foods.iter().peekable();
+    loop {
+        let foods = search.next_page()?;
+        let mut foods = foods.iter().peekable();
 
-    if foods.peek().is_none() {
-        bail!("Found no foods matching '{term}'");
-    }
+        if foods.peek().is_none() {
+            bail!("Found no foods matching '{term}'");
+        }
 
-    #[derive(tabled::Tabled)]
-    struct Index(#[tabled(rename = "index")] usize);
-    let foods: Vec<_> = foods
-        .enumerate()
-        .map(|(i, food)| (Index(i), food))
-        .collect();
+        #[derive(tabled::Tabled)]
+        struct Index(#[tabled(rename = "index")] usize);
+        let foods: Vec<_> = foods
+            .enumerate()
+            .map(|(i, food)| (Index(i), food))
+            .collect();
 
-    let table = Table::new(&foods).with(Style::sharp()).to_string();
-    println!("{table}");
+        let table = Table::new(&foods).with(Style::sharp()).to_string();
+        println!("{table}");
 
-    print!("\n[0-{}]? ", foods.len().saturating_sub(1));
-    std::io::stdout().flush()?;
+        print!("\n[0-{}] or (n)ext? ", foods.len().saturating_sub(1));
+        std::io::stdout().flush()?;
 
-    let mut res = String::new();
-    std::io::stdin().read_line(&mut res)?;
-    let res = res.trim();
+        let mut res = String::new();
+        std::io::stdin().read_line(&mut res)?;
+        let res = res.trim();
 
-    if res.is_empty() {
-        log::debug!("Empty response, not adding any food");
+        if res.is_empty() {
+            log::debug!("Empty response, not adding any food");
+            return Ok(());
+        }
+
+        if res.starts_with("n") {
+            log::debug!("Getting next page of results");
+            continue;
+        }
+
+        let idx: usize = res.parse()?;
+        let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
+        data.save(key.as_str(), food)?;
+        println!("Added '{}' as {key}", food.name);
         return Ok(());
     }
-
-    let idx: usize = res.parse()?;
-    let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
-    data.save(key.as_str(), food)?;
-    println!("Added '{}' as {key}", food.name);
-
-    Ok(())
 }
