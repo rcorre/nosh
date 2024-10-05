@@ -1,6 +1,10 @@
 name = Banana
+
+[nutrients]
 carb = 23
 fat = 0.2
 protein = 0.74
 kcal = 98
-serving = 100g
+
+[servings]
+g = 100

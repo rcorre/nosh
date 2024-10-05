@@ -120,7 +120,7 @@ fn test_food_ls_pattern_nomatch() {
 fn test_food_rm() {
     let cli = CLI::new();
 
-    assert_cmd_snapshot!(cli.cmd().args(["food", "rm", "oats"]));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "rm", "banana_oatmeal"]));
     assert_cmd_snapshot!(cli.cmd().args(["food", "ls"]));
 }
 

@@ -2,6 +2,7 @@ use crate::serving::Serving;
 use crate::{nutrients::Nutrients, Data};
 
 use anyhow::{anyhow, bail, Context, Result};
+use ini::{Ini, WriteOption};
 
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -164,61 +165,91 @@ impl Data for Food {
     }
 
     fn load(
-        r: impl std::io::BufRead,
-        load_food: impl FnMut(&str) -> Result<Option<Food>>,
+        mut r: impl std::io::BufRead,
+        mut load_food: impl FnMut(&str) -> Result<Option<Food>>,
     ) -> Result<Self> {
         let mut food = Food::default();
-        let mut nutrients = Nutrients::default();
-        for line in r.lines() {
-            let line = line?;
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            log::trace!("Parsing food line: {line}");
-            let Some((k, v)) = line.rsplit_once("=") else {
-                bail!("Invalid food line, expected '=': {line}");
-            };
-            let (k, v) = (k.trim(), v.trim());
-            match k {
-                "name" => food.name = v.into(),
-                "kcal" => nutrients.kcal = v.parse()?,
-                "carb" => nutrients.carb = v.parse()?,
-                "fat" => nutrients.fat = v.parse()?,
-                "protein" => nutrients.protein = v.parse()?,
-                "serving" => {
-                    let idx = v
-                        .find(|c: char| c != '.' && !c.is_digit(10))
-                        .ok_or_else(|| anyhow!("Invalid serving: {v}"))?;
-                    let (size, unit) = v.split_at(idx);
-                    let size = size.trim();
-                    let unit = unit.trim();
-                    let size = size.parse().with_context(|| format!("Parsing '{size}'"))?;
-                    food.servings.push((unit.into(), size));
-                }
-                _ => bail!("Unexpected food key: {k}"),
+        let ini = Ini::read_from(&mut r)?;
+
+        log::trace!("Parsing: {ini:?}");
+
+        food.name = if let Some(name) = ini.general_section().get("name") {
+            name.into()
+        } else {
+            bail!("Missing name");
+        };
+
+        if let Some(servings) = ini.section(Some("servings")) {
+            for (k, v) in servings.iter() {
+                log::trace!("Parsing serving: {k} = {v}");
+                food.servings.push((k.into(), v.parse()?));
             }
         }
 
-        food.spec = FoodSpec::Nutrients(nutrients);
+        match (
+            ini.section(Some("nutrients")),
+            ini.section(Some("ingredients")),
+        ) {
+            (None, None) => bail!("Must specify one of [nutrients] or [ingredients]"),
+            (Some(n), None) => {
+                log::trace!("Parsing nutrients");
+                let mut nutrients = Nutrients::default();
+                nutrients.kcal = n.get("kcal").unwrap_or("0").parse()?;
+                nutrients.carb = n.get("carb").unwrap_or("0").parse()?;
+                nutrients.fat = n.get("fat").unwrap_or("0").parse()?;
+                nutrients.protein = n.get("protein").unwrap_or("0").parse()?;
+                food.spec = FoodSpec::Nutrients(nutrients);
+            }
+            (None, Some(i)) => {
+                log::trace!("Parsing ingredients");
+                let mut ingredients = vec![];
+                for (k, v) in i {
+                    ingredients.push(Ingredient {
+                        key: k.into(),
+                        serving: v.parse()?,
+                        food: load_food(k)?.with_context(|| format!("Food not found: {k}"))?,
+                    });
+                }
+                food.spec = FoodSpec::Ingredients(ingredients);
+            }
+            (Some(_), Some(_)) => bail!("Cannot have both [nutrients] and [ingredients]"),
+        }
+
         Ok(food)
     }
 
     fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
         log::debug!("Saving {self:?}");
-        match self.spec {
+        let mut ini = Ini::new();
+        ini.general_section_mut().insert("name", &self.name);
+        match &self.spec {
             FoodSpec::Nutrients(n) => {
-                writeln!(w, "name = {}", self.name)?;
-                writeln!(w, "carb = {}", n.carb)?;
-                writeln!(w, "fat = {}", n.fat)?;
-                writeln!(w, "protein = {}", n.protein)?;
-                writeln!(w, "kcal = {}", n.kcal)?;
+                let mut sec = ini.with_section(Some("nutrients"));
+                sec.add("carb", n.carb.to_string());
+                sec.add("fat", n.fat.to_string());
+                sec.add("protein", n.protein.to_string());
+                sec.add("kcal", n.kcal.to_string());
             }
-            FoodSpec::Ingredients(_) => todo!(),
+            FoodSpec::Ingredients(i) => {
+                let mut sec = ini.with_section(Some("ingredients"));
+                for ingredient in i {
+                    sec.add(&ingredient.key, ingredient.serving.to_string());
+                }
+            }
         }
+
+        let mut servings = ini.with_section(Some("servings"));
         for (unit, size) in &self.servings {
-            writeln!(w, "serving = {size} {unit}")?;
+            servings.add(unit, size.to_string());
         }
+        ini.write_to_opt(
+            w,
+            WriteOption {
+                line_separator: ini::LineSeparator::CR,
+                kv_separator: " = ",
+                ..Default::default()
+            },
+        )?;
         Ok(())
     }
 }

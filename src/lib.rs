@@ -172,6 +172,55 @@ mod tests {
     }
 
     #[test]
+    fn test_load_food_recipe() {
+        let (data, _tmp) = setup();
+        let oats: Food = data.load_food("banana_oatmeal").unwrap().unwrap();
+        assert_eq!(
+            oats,
+            Food {
+                name: "Banana Oatmeal".into(),
+                spec: FoodSpec::Ingredients(vec![
+                    Ingredient {
+                        key: "oats".into(),
+                        serving: Serving {
+                            size: 0.5,
+                            unit: Some("c".into()),
+                        },
+                        food: Food {
+                            name: "Oats".into(),
+                            spec: FoodSpec::Nutrients(Nutrients {
+                                carb: 68.7,
+                                fat: 5.89,
+                                protein: 13.5,
+                                kcal: 382.0,
+                            }),
+                            servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
+                        },
+                    },
+                    Ingredient {
+                        key: "banana".into(),
+                        serving: Serving {
+                            size: 1.0,
+                            unit: None
+                        },
+                        food: Food {
+                            name: "Banana".into(),
+                            spec: FoodSpec::Nutrients(Nutrients {
+                                carb: 23.0,
+                                fat: 0.2,
+                                protein: 0.74,
+                                kcal: 98.0
+                            }),
+                            servings: vec![("g".into(), 100.0)],
+                        },
+                    },
+                ]),
+                servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
+            }
+        );
+    }
+
+    #[test]
     fn test_load_food_not_exists() {
         let tmp = tempfile::tempdir().unwrap();
         let data = Database::new(tmp.path()).unwrap();
@@ -187,7 +236,11 @@ mod tests {
             .unwrap()
             .collect::<Result<Vec<_>>>()
             .unwrap();
-        let mut expected = vec!["oats".to_string(), "banana".to_string()];
+        let mut expected = vec![
+            "oats".to_string(),
+            "banana_oatmeal".to_string(),
+            "banana".to_string(),
+        ];
         actual.sort();
         expected.sort();
         assert_eq!(actual, expected);
@@ -212,12 +265,16 @@ mod tests {
             res,
             [
                 "name = Cereal",
+                "",
+                "[nutrients]",
                 "carb = 22",
                 "fat = 0.5",
                 "protein = 1.2",
                 "kcal = 120",
-                "serving = 50 g",
-                "serving = 2.5 cups",
+                "",
+                "[servings]",
+                "g = 50",
+                "cups = 2.5",
                 "",
             ]
             .join("\n")

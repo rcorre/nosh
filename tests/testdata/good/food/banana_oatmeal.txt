@@ -1,0 +1,9 @@
+name = Banana Oatmeal
+
+[ingredients]
+oats = 0.5c
+banana = 1
+
+[servings]
+cups = 0.5
+g = 100
