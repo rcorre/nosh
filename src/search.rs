@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::Deserialize;
 
-use crate::Nutrients;
+use crate::{FoodSpec, Nutrients};
 
 const FDC_URL: &str = "https://api.nal.usda.gov/fdc/v1/foods/search";
 
@@ -126,7 +126,7 @@ impl SearchFood {
 impl From<&SearchFood> for crate::Food {
     fn from(value: &SearchFood) -> Self {
         crate::Food {
-            nutrients: value.nutrients(),
+            spec: FoodSpec::Nutrients(value.nutrients()),
             servings: value.servings(),
             name: value.description.clone().unwrap_or_default(),
         }
@@ -184,22 +184,22 @@ mod tests {
             vec![
                 Food {
                     name: "Flour, potato".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 79.9,
                         fat: 0.951,
                         protein: 8.11,
                         kcal: 353.0
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
                 Food {
                     name: "Potatoes, gold, without skin, raw".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 16.0,
                         fat: 0.264,
                         protein: 1.81,
                         kcal: 71.6,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
             ]
@@ -225,22 +225,22 @@ mod tests {
             vec![
                 Food {
                     name: "Potato patty".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 13.5,
                         fat: 11.3,
                         protein: 3.89,
                         kcal: 171.0,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
                 Food {
                     name: "Potato pancake".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 20.6,
                         fat: 10.8,
                         protein: 4.47,
                         kcal: 196.0,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
             ]
@@ -266,22 +266,22 @@ mod tests {
             vec![
                 Food {
                     name: "Bread, potato".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 47.1,
                         fat: 3.13,
                         protein: 12.5,
                         kcal: 266.0,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
                 Food {
                     name: "Potato flour".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 83.1,
                         fat: 0.34,
                         protein: 6.9,
                         kcal: 357.0,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
             ]
@@ -307,22 +307,22 @@ mod tests {
             vec![
                 Food {
                     name: "KASIA'S, POTATO PANCAKES, POTATO, POTATO".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 26.3,
                         fat: 7.02,
                         protein: 3.51,
                         kcal: 158.0,
-                    },
+                    }),
                     servings: vec![("GRM".into(), 57.0), ("PANCAKE".into(), 1.0)],
                 },
                 Food {
                     name: "GNOCCHI WITH POTATO, POTATO".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 29.3,
                         fat: 0.36,
                         protein: 3.57,
                         kcal: 136.0,
-                    },
+                    }),
                     servings: vec![("g".into(), 140.0), ("cup".into(), 1.0)],
                 },
             ]
@@ -351,22 +351,22 @@ mod tests {
             vec![
                 Food {
                     name: "Flour, potato".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 79.9,
                         fat: 0.951,
                         protein: 8.11,
                         kcal: 353.0
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
                 Food {
                     name: "Potatoes, gold, without skin, raw".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 16.0,
                         fat: 0.264,
                         protein: 1.81,
                         kcal: 71.6,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
             ]
@@ -378,22 +378,22 @@ mod tests {
             vec![
                 Food {
                     name: "Potatoes, red, without skin, raw".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 16.3,
                         fat: 0.248,
                         protein: 2.06,
                         kcal: 73.4,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
                 Food {
                     name: "Potatoes, russet, without skin, raw".into(),
-                    nutrients: Nutrients {
+                    spec: FoodSpec::Nutrients(Nutrients {
                         carb: 17.8,
                         fat: 0.36,
                         protein: 2.27,
                         kcal: 81.0,
-                    },
+                    }),
                     servings: vec![("g".into(), 100.0)],
                 },
             ]
@@ -404,12 +404,12 @@ mod tests {
             actual.iter().collect::<Vec<_>>(),
             vec![Food {
                 name: "Sweet potatoes, orange flesh, without skin, raw".into(),
-                nutrients: Nutrients {
+                spec: FoodSpec::Nutrients(Nutrients {
                     carb: 17.3,
                     fat: 0.375,
                     protein: 1.58,
                     kcal: 77.4,
-                },
+                }),
                 servings: vec![("g".into(), 100.0)],
             },]
         );

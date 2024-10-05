@@ -160,12 +160,12 @@ mod tests {
             oats,
             Food {
                 name: "Oats".into(),
-                nutrients: Nutrients {
+                spec: FoodSpec::Nutrients(Nutrients {
                     carb: 68.7,
                     fat: 5.89,
                     protein: 13.5,
                     kcal: 382.0,
-                },
+                }),
                 servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
             }
         );
@@ -198,12 +198,12 @@ mod tests {
         let (data, tmp) = setup();
         let food = Food {
             name: "Cereal".into(),
-            nutrients: Nutrients {
+            spec: FoodSpec::Nutrients(Nutrients {
                 carb: 22.0,
                 fat: 0.5,
                 protein: 1.2,
                 kcal: 120.0,
-            },
+            }),
             servings: vec![("g".into(), 50.0), ("cups".into(), 2.5)],
         };
         data.save_food("cereal", &food).unwrap();

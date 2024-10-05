@@ -11,6 +11,28 @@ fn format_servings(servings: &Vec<(String, f32)>) -> String {
         .join(",")
 }
 
+#[derive(Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Ingredient {
+    pub key: String,
+    pub serving: Serving,
+    pub food: Food,
+}
+
+#[derive(Debug, tabled::Tabled)]
+#[cfg_attr(test, derive(PartialEq))]
+// FoodSpec defines a food either in terms of nutrients or ingredients.
+pub enum FoodSpec {
+    Nutrients(Nutrients),
+    Ingredients(Vec<Ingredient>),
+}
+
+impl Default for FoodSpec {
+    fn default() -> Self {
+        Self::Nutrients(Nutrients::default())
+    }
+}
+
 // Food describes a single food item.
 #[derive(Debug, Default, tabled::Tabled)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -21,7 +43,7 @@ pub struct Food {
 
     // The macronutrients of this food item.
     #[tabled(inline)]
-    pub nutrients: Nutrients,
+    pub spec: FoodSpec,
 
     // Ways of describing a single serving of this food.
     // For example, [("g", 100.0), ("cups", 0.5)] means that
@@ -34,34 +56,45 @@ impl Food {
     // Compute the nutrients in a serving of this food.
     // Returns an error if the serving unit is not defined for this food.
     pub fn serve(&self, s: &Serving) -> Result<Nutrients> {
-        let Some(unit) = &s.unit else {
-            return Ok(self.nutrients * s.size);
+        let portion = if let Some(unit) = &s.unit {
+            let mut matched = self.servings.iter().filter(|(u, _)| u.starts_with(unit));
+            let Some(first) = matched.next() else {
+                let units = self
+                    .servings
+                    .iter()
+                    .cloned()
+                    .map(|(unit, _)| unit)
+                    .collect::<Vec<_>>();
+                bail!(
+                    "Unknown serving unit {unit}, expected one of: {}",
+                    units.join(", ")
+                );
+            };
+
+            if let Some(next) = matched.next() {
+                bail!(
+                    "Serving unit '{unit}' ambiguous between '{}' and '{}'",
+                    first.0,
+                    next.0
+                );
+            }
+
+            let (_, size) = first;
+            s.size / *size
+        } else {
+            s.size
         };
 
-        let mut matched = self.servings.iter().filter(|(u, _)| u.starts_with(unit));
-        let Some(first) = matched.next() else {
-            let units = self
-                .servings
-                .iter()
-                .cloned()
-                .map(|(unit, _)| unit)
-                .collect::<Vec<_>>();
-            bail!(
-                "Unknown serving unit {unit}, expected one of: {}",
-                units.join(", ")
-            );
-        };
-
-        if let Some(next) = matched.next() {
-            bail!(
-                "Serving unit '{unit}' ambiguous between '{}' and '{}'",
-                first.0,
-                next.0
-            );
+        match &self.spec {
+            FoodSpec::Nutrients(n) => Ok(*n * portion),
+            FoodSpec::Ingredients(ingredients) => {
+                let mut res = Nutrients::default();
+                for i in ingredients {
+                    res = res + i.food.serve(&(i.serving.clone() * portion))?;
+                }
+                Ok(res)
+            }
         }
-
-        let (_, size) = first;
-        Ok(self.nutrients * (s.size / *size))
     }
 }
 
@@ -69,12 +102,12 @@ impl Food {
 fn test_food_serve() {
     let food = Food {
         name: "".into(),
-        nutrients: Nutrients {
+        spec: FoodSpec::Nutrients(Nutrients {
             carb: 12.0,
             fat: 3.0,
             protein: 8.0,
             kcal: 120.0,
-        },
+        }),
         servings: vec![("g".into(), 100.0), ("cups".into(), 0.5)],
     };
     let serve = |size, unit: Option<&str>| {
@@ -137,6 +170,7 @@ impl Data for Food {
         load_food: impl FnMut(&str) -> Result<Option<Food>>,
     ) -> Result<Self> {
         let mut food = Food::default();
+        let mut nutrients = Nutrients::default();
         for line in r.lines() {
             let line = line?;
             let line = line.trim();
@@ -150,10 +184,10 @@ impl Data for Food {
             let (k, v) = (k.trim(), v.trim());
             match k {
                 "name" => food.name = v.into(),
-                "kcal" => food.nutrients.kcal = v.parse()?,
-                "carb" => food.nutrients.carb = v.parse()?,
-                "fat" => food.nutrients.fat = v.parse()?,
-                "protein" => food.nutrients.protein = v.parse()?,
+                "kcal" => nutrients.kcal = v.parse()?,
+                "carb" => nutrients.carb = v.parse()?,
+                "fat" => nutrients.fat = v.parse()?,
+                "protein" => nutrients.protein = v.parse()?,
                 "serving" => {
                     let idx = v
                         .find(|c: char| c != '.' && !c.is_digit(10))
@@ -167,17 +201,23 @@ impl Data for Food {
                 _ => bail!("Unexpected food key: {k}"),
             }
         }
+
+        food.spec = FoodSpec::Nutrients(nutrients);
         Ok(food)
     }
 
     fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
         log::debug!("Saving {self:?}");
-        let n = &self.nutrients;
-        writeln!(w, "name = {}", self.name)?;
-        writeln!(w, "carb = {}", n.carb)?;
-        writeln!(w, "fat = {}", n.fat)?;
-        writeln!(w, "protein = {}", n.protein)?;
-        writeln!(w, "kcal = {}", n.kcal)?;
+        match self.spec {
+            FoodSpec::Nutrients(n) => {
+                writeln!(w, "name = {}", self.name)?;
+                writeln!(w, "carb = {}", n.carb)?;
+                writeln!(w, "fat = {}", n.fat)?;
+                writeln!(w, "protein = {}", n.protein)?;
+                writeln!(w, "kcal = {}", n.kcal)?;
+            }
+            FoodSpec::Ingredients(_) => todo!(),
+        }
         for (unit, size) in &self.servings {
             writeln!(w, "serving = {size} {unit}")?;
         }

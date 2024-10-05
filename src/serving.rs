@@ -21,6 +21,17 @@ impl Default for Serving {
     }
 }
 
+impl std::ops::Mul<f32> for Serving {
+    type Output = Serving;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self {
+            size: self.size * rhs,
+            unit: self.unit,
+        }
+    }
+}
+
 impl std::fmt::Display for Serving {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.unit {
