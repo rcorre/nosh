@@ -7,7 +7,7 @@ info:
     - show
     - nope
   env:
-    XDG_DATA_HOME: /tmp/.tmpmVvPT3
+    XDG_DATA_HOME: /tmp/.tmpRVT3Yy
 ---
 success: false
 exit_code: 1

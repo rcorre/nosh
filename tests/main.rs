@@ -29,6 +29,8 @@ impl CLI {
         let _ = env_logger::try_init();
 
         let mut settings = insta::Settings::clone_current();
+
+        // Remove ansi color codes
         settings.add_filter("\x1b\\[\\d+m", "");
 
         let cli = Self {
@@ -85,7 +87,7 @@ impl CLI {
 }
 
 #[test]
-fn test_show_food_missing() {
+fn test_food_show_missing() {
     let cli = CLI::new();
     assert_cmd_snapshot!(cli.cmd().args(["food", "show", "nope"]));
 }
