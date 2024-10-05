@@ -1,7 +1,7 @@
 use std::{io::Write, os::unix::fs::OpenOptionsExt};
 
 use assert_cmd::Command;
-use nom::{Food, Nutrients};
+use nosh::{Food, Nutrients, APP_NAME};
 use predicates::prelude::*;
 
 struct CLI {
@@ -40,9 +40,9 @@ impl CLI {
     }
 
     fn add_food(&self, key: &str, food: &Food) {
-        let path = self.data_dir.path().join("nom");
+        let path = self.data_dir.path().join(APP_NAME);
         log::info!("Test staging food to {path:?}: {food:?}");
-        nom::Data::new(&path).write_food(key, food).unwrap()
+        nosh::Data::new(&path).write_food(key, food).unwrap()
     }
 }
 
@@ -123,18 +123,18 @@ cups = 0.5
 }
 
 #[test]
-fn test_nom_food_missing() {
+fn test_eat_food_missing() {
     let cli = CLI::new();
 
     cli.cmd()
-        .args(["nom", "nope"])
+        .args(["eat", "nope"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("Error: No food with key \"nope\""));
 }
 
 #[test]
-fn test_nom() {
+fn test_eat() {
     let cli = CLI::new();
 
     cli.add_food(
@@ -166,7 +166,7 @@ fn test_nom() {
     );
 
     // Add one serving
-    cli.cmd().args(["nom", "oats"]).assert().success();
+    cli.cmd().args(["eat", "oats"]).assert().success();
     cli.cmd()
         .args(["journal", "show"])
         .assert()
@@ -175,7 +175,7 @@ fn test_nom() {
         .stdout(matches("Total.*1.*68.7.*5.9.*13.5.*382"));
 
     // Add 2.5 servings
-    cli.cmd().args(["nom", "oats", "2.5"]).assert().success();
+    cli.cmd().args(["eat", "oats", "2.5"]).assert().success();
     cli.cmd()
         .args(["journal", "show"])
         .assert()
@@ -184,7 +184,7 @@ fn test_nom() {
         .stdout(matches("Total.*240.4.*20.6.*47.2.*1337"));
 
     // Add one serving of banana
-    cli.cmd().args(["nom", "banana"]).assert().success();
+    cli.cmd().args(["eat", "banana"]).assert().success();
     cli.cmd()
         .args(["journal", "show"])
         .assert()

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nom::{Data, Nutrients};
+use nosh::{Data, Nutrients, APP_NAME};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -9,15 +9,13 @@ use std::{
 };
 use tabled::{
     settings::{
-        object::{Column, Rows},
+        object::Rows,
         style::HorizontalLine,
         themes::{Colorization, ColumnNames},
         Color, Concat, Style,
     },
     Table,
 };
-
-const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 
 #[derive(Subcommand)]
 enum FoodCommand {
@@ -40,7 +38,7 @@ enum RecipeCommand {
 
 #[derive(Subcommand)]
 enum Command {
-    Nom {
+    Eat {
         food: String,
         serving: Option<String>,
     },
@@ -81,7 +79,7 @@ fn main() -> Result<()> {
     let data = Data::new(&dirs.create_data_directory(APP_NAME)?);
 
     match args.command {
-        Command::Nom { food, serving } => nom(&data, food, serving),
+        Command::Eat { food, serving } => nosh(&data, food, serving),
         Command::Food { command } => match command {
             FoodCommand::Edit { key } => edit_food(&data, &key),
             FoodCommand::Show { key } => show_food(&data, &key),
@@ -160,7 +158,7 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn nom(data: &Data, key: String, serving: Option<String>) -> Result<()> {
+fn nosh(data: &Data, key: String, serving: Option<String>) -> Result<()> {
     let Some(_food) = data.food(&key)? else {
         bail!("No food with key {key:?}");
     };
@@ -285,9 +283,9 @@ impl SearchFood {
     }
 }
 
-impl From<&SearchFood> for nom::Food {
+impl From<&SearchFood> for nosh::Food {
     fn from(value: &SearchFood) -> Self {
-        nom::Food {
+        nosh::Food {
             nutrients: value.nutrients(),
             servings: value.servings(),
             name: value.description.clone().unwrap_or_default(),
@@ -324,7 +322,7 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
         .foods
         .iter()
         .enumerate()
-        .map(|(i, x)| (Index(i), nom::Food::from(x)))
+        .map(|(i, x)| (Index(i), nosh::Food::from(x)))
         .collect();
 
     let table = Table::new(&foods).with(Style::sharp()).to_string();

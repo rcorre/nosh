@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
+
 fn float0(f: &f32) -> String {
     format!("{:.0}", f)
 }
@@ -127,8 +129,8 @@ pub struct Food {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Journal(pub HashMap<String, f32>);
 
-// Data provides access to the nom "database".
-// Nom stores all of it's data as TOML files using a particular directory structure:
+// Data provides access to the nosh "database".
+// Nosh stores all of it's data as TOML files using a particular directory structure:
 // - $root/ (typically XDG_DATA_HOME)
 //
 //   - food/
