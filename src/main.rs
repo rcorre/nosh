@@ -6,17 +6,23 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use toml::value::Date;
 
 const APP_NAME: &'static str = "nom";
 
+#[derive(clap::Args)]
+struct ShowArgs {}
+
+#[derive(clap::Args)]
+struct NomArgs {
+    food: String,
+    quantity: Option<f32>,
+    unit: Option<String>,
+}
+
 #[derive(Subcommand)]
 enum Command {
-    Nom {
-        food: String,
-        quantity: Option<f32>,
-        unit: Option<String>,
-    },
+    Nom(NomArgs),
+    Show(ShowArgs),
 }
 
 #[derive(Parser)]
@@ -179,12 +185,12 @@ impl Data {
         Ok(toml::from_str(&raw)?)
     }
 
-    pub fn journal(&self, date: &toml::value::Date) -> Result<Journal> {
+    pub fn journal(&self, date: impl chrono::Datelike) -> Result<Journal> {
         let path = self
             .journal_dir
-            .join(format!("{:04}", date.year))
-            .join(format!("{:02}", date.month))
-            .join(format!("{:02}", date.day))
+            .join(format!("{:04}", date.year()))
+            .join(format!("{:02}", date.month()))
+            .join(format!("{:02}", date.day()))
             .with_extension("toml");
         let raw = fs::read_to_string(&path).with_context(|| format!("Reading {path:?}"))?;
         Ok(toml::from_str(&raw)?)
@@ -205,15 +211,17 @@ fn main() -> Result<()> {
     data.create_dirs()?;
     log::debug!("Created directories: {data:?}");
 
-    let food = data.food("banana");
-    log::info!("Food: {food:?}");
-
-    let journal = data.journal(&Date {
-        year: 2024,
-        month: 01,
-        day: 01,
-    })?;
-    log::info!("Journal: {journal:?}");
+    match args.command {
+        Command::Nom(args) => nom(&data, args),
+        Command::Show(args) => show(&data, args),
+    }
 
     Ok(())
 }
+
+fn show(data: &Data, args: ShowArgs) {
+    let now = chrono::Local::now();
+    let journal = data.journal(now);
+}
+
+fn nom(data: &Data, args: NomArgs) {}
