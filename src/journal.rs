@@ -1,5 +1,6 @@
 use crate::{Data, Serving};
 use anyhow::Result;
+use chrono::{Datelike, NaiveDate};
 
 // Journal is a record of food consumed during a day.
 // It is a list of "food: serving" lines.
@@ -15,6 +16,19 @@ use anyhow::Result;
 pub struct Journal(pub Vec<(String, Serving)>);
 
 impl Data for Journal {
+    type Key = NaiveDate;
+    const DIR: &str = "journal";
+
+    fn path(key: &NaiveDate) -> std::path::PathBuf {
+        format!(
+            "journal/{:04}/{:02}/{:02}.txt",
+            key.year(),
+            key.month(),
+            key.day()
+        )
+        .into()
+    }
+
     fn load(r: impl std::io::BufRead) -> Result<Self> {
         let mut rows = vec![];
         for line in r.lines() {

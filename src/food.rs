@@ -114,6 +114,16 @@ fn test_food_serve() {
 }
 
 impl Data for Food {
+    type Key = str;
+    const DIR: &str = "food";
+
+    fn path(key: &str) -> std::path::PathBuf {
+        ["food", key]
+            .iter()
+            .collect::<std::path::PathBuf>()
+            .with_extension("txt")
+    }
+
     fn load(r: impl std::io::BufRead) -> Result<Self> {
         let mut food = Food::default();
         for line in r.lines() {
@@ -146,6 +156,7 @@ impl Data for Food {
     }
 
     fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
+        log::debug!("Saving {self:?}");
         let n = &self.nutrients;
         writeln!(w, "name = {}", self.name)?;
         writeln!(w, "carb = {}", n.carb)?;

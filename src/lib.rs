@@ -10,10 +10,10 @@ pub use journal::*;
 pub use nutrients::*;
 pub use serving::*;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::Datelike;
 use std::fs;
-use std::io::BufWriter;
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
@@ -41,34 +41,22 @@ pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 //         - 31.txt
 #[derive(Debug)]
 pub struct Database {
-    food_dir: PathBuf,
-    recipe_dir: PathBuf,
-    journal_dir: PathBuf,
+    dir: PathBuf,
 }
 
 impl Database {
     // Create a new database at the given root directory.
-    pub fn new(root_dir: &Path) -> Result<Database> {
-        let food_dir = root_dir.join("food");
-        let recipe_dir = root_dir.join("recipe");
-        let journal_dir = root_dir.join("journal");
-        fs::create_dir_all(&food_dir)?;
-        fs::create_dir_all(&recipe_dir)?;
-        fs::create_dir_all(&journal_dir)?;
-        Ok(Database {
-            food_dir,
-            recipe_dir,
-            journal_dir,
-        })
+    pub fn new(dir: impl Into<PathBuf>) -> Result<Database> {
+        Ok(Database { dir: dir.into() })
     }
 
-    fn list<'a, T: Data>(
+    pub fn list<'a, T: Data>(
         &self,
-        dir: &Path,
         term: &'a Option<&str>,
     ) -> Result<impl Iterator<Item = Result<T>> + 'a> {
-        log::trace!("Listing {dir:?}");
         let term = term.as_ref().unwrap_or(&"");
+        let dir = self.dir.join(T::DIR);
+        log::trace!("Listing {dir:?}");
         Ok(fs::read_dir(&dir)?
             .filter(move |e| match e {
                 Ok(e) => e.path().as_path().to_string_lossy().contains(term),
@@ -77,22 +65,26 @@ impl Database {
             .map(|e| -> Result<T> {
                 let f = fs::File::open(e?.path())?;
                 let r = std::io::BufReader::new(f);
-                let t = T::load(r)?;
-                Ok(t)
+                T::load(r)
             }))
     }
 
-    fn write<T: serde::Serialize + std::fmt::Debug>(&self, path: &Path, obj: &T) -> Result<()> {
-        log::trace!("Writing to {path:?}: {obj:?}");
+    pub fn save<T: Data + std::fmt::Debug>(&self, key: &T::Key, data: &T) -> Result<()> {
+        let path = self.dir.join(T::path(key));
+        log::debug!("Saving {data:?} to {path:?}");
         fs::create_dir_all(
             path.parent()
-                .ok_or_else(|| anyhow!("Missing parent dir: {path:?}"))?,
+                .ok_or_else(|| anyhow!("No parent path: {path:?}"))?,
         )?;
-        Ok(fs::write(&path, toml::to_string_pretty(obj)?)?)
+        let mut file = std::fs::File::create(&path).with_context(|| format!("Open {path:?}"))?;
+        let mut writer = BufWriter::new(&file);
+        data.save(&mut writer)?;
+        Ok(())
     }
 
-    pub fn load_food(&self, key: &str) -> Result<Option<Food>> {
-        let path = &self.food_dir.join(key).with_extension("txt");
+    pub fn load<T: Data>(&self, key: &T::Key) -> Result<Option<T>> {
+        let path = self.dir.join(T::path(key));
+        log::debug!("Loading {path:?}");
         let file = match std::fs::File::open(&path) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -100,59 +92,12 @@ impl Database {
                 bail!("Failed to open '{path:?}': {e}")
             }
         };
-        let r = std::io::BufReader::new(file);
-        Ok(Some(Food::load(r)?))
+        let reader = BufReader::new(file);
+        Ok(Some(T::load(reader)?))
     }
 
-    pub fn save_food(&self, key: &str, food: &Food) -> Result<()> {
-        let path = &self.food_dir.join(key).with_extension("txt");
-        let file = fs::File::create(path)?;
-        let mut writer = BufWriter::new(file);
-        food.save(&mut writer)
-    }
-
-    // TODO: fix listing
-    pub fn list_food<'a>(
-        &self,
-        term: &'a Option<&str>,
-    ) -> Result<impl Iterator<Item = Result<Food>> + 'a> {
-        self.list(&self.food_dir, term)
-    }
-
-    pub fn remove_food<'a>(&self, key: &str) -> Result<()> {
-        Ok(std::fs::remove_file(
-            &self.food_dir.join(key).with_extension("toml"),
-        )?)
-    }
-
-    fn journal_path(&self, date: &impl Datelike) -> PathBuf {
-        self.journal_dir
-            .join(format!("{:04}", date.year()))
-            .join(format!("{:02}", date.month()))
-            .join(format!("{:02}", date.day()))
-            .with_extension("txt")
-    }
-
-    // Fetch the journal for the given date.
-    // Returns None if there is no journal for that date.
-    pub fn load_journal(&self, key: &impl Datelike) -> Result<Option<Journal>> {
-        let path = &self.journal_path(key);
-        let file = match std::fs::File::open(&path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => {
-                bail!("Failed to open '{path:?}': {e}")
-            }
-        };
-        let r = std::io::BufReader::new(file);
-        Ok(Some(Journal::load(r)?))
-    }
-
-    pub fn save_journal(&self, key: &impl Datelike, journal: &Journal) -> Result<()> {
-        let path = &self.journal_path(key);
-        let file = fs::File::create(path)?;
-        let mut writer = BufWriter::new(file);
-        journal.save(&mut writer)
+    pub fn remove<T: Data>(&self, key: &T::Key) -> Result<()> {
+        Ok(std::fs::remove_file(&self.dir.join(T::path(key)))?)
     }
 }
 
@@ -187,7 +132,7 @@ mod tests {
     #[test]
     fn test_load_food() {
         let (data, _tmp) = setup();
-        let oats = data.load_food("oats").unwrap().unwrap();
+        let oats: Food = data.load("oats").unwrap().unwrap();
         assert_eq!(oats.name, "Oats");
         assert_eq!(oats.nutrients.carb, 68.7);
         assert_eq!(oats.nutrients.fat, 5.89);
@@ -209,8 +154,8 @@ mod tests {
             },
             servings: vec![("g".into(), 50.0), ("cups".into(), 2.5)],
         };
-        data.save_food("banana", &food).unwrap();
-        let res = fs::read_to_string(tmp.path().join("food/banana.txt")).unwrap();
+        data.save("cereal", &food).unwrap();
+        let res = fs::read_to_string(tmp.path().join("food/cereal.txt")).unwrap();
         assert_eq!(
             res,
             [
@@ -232,7 +177,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let data = Database::new(tmp.path()).unwrap();
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
-        let actual = data.load_journal(&date.clone()).unwrap();
+        let actual = data.load::<Journal>(&date.clone()).unwrap();
         assert!(actual.is_none());
     }
 
@@ -249,7 +194,7 @@ mod tests {
         ]);
 
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
-        let actual = data.load_journal(&date.clone()).unwrap().unwrap();
+        let actual: Journal = data.load(&date.clone()).unwrap().unwrap();
         assert_eq!(expected, actual);
     }
 
@@ -265,7 +210,7 @@ mod tests {
         ]);
 
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 08).unwrap();
-        data.save_journal(&date.clone(), &expected).unwrap();
+        data.save(&date.clone(), &expected).unwrap();
 
         let actual = fs::read_to_string(
             tmp.path()

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nosh::{Database, Nutrients, Serving, APP_NAME};
+use nosh::{Database, Food, Journal, Nutrients, Serving, APP_NAME};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     fs,
@@ -106,9 +106,9 @@ fn edit_journal(data: &Database, key: Option<String>) -> Result<()> {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
-    let journal = data.load_journal(&date)?.unwrap_or_default();
+    let journal = data.load::<Journal>(&date)?.unwrap_or_default();
     // let journal = edit(&journal)?; // TODO
-    data.save_journal(&date, &journal)
+    data.save(&date, &journal)
 }
 
 fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
@@ -116,11 +116,11 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
-    let journal = data.load_journal(&date)?.unwrap_or_default();
+    let journal = data.load::<Journal>(&date)?.unwrap_or_default();
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (data.load_food(key), serving))
+        .map(|(key, serving)| (data.load::<Food>(key), serving))
         .map(|(food, serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 name: food.name,
@@ -162,7 +162,7 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
 }
 
 fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
-    let Some(food) = data.load_food(&key)? else {
+    let Some(food) = data.load::<Food>(&key)? else {
         bail!("No food with key {key:?}");
     };
     let serving = match serving {
@@ -173,12 +173,12 @@ fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
         bail!("Invalid serving: {err:?}");
     };
 
-    let date = chrono::Local::now();
+    let date = chrono::Local::now().date_naive();
     log::debug!("Adding food={key} serving={serving} to {date:?}");
 
-    let mut journal = data.load_journal(&date)?.unwrap_or_default();
+    let mut journal = data.load::<Journal>(&date)?.unwrap_or_default();
     journal.0.push((key, serving));
-    data.save_journal(&date, &journal)
+    data.save(&date, &journal)
 }
 
 fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
@@ -207,13 +207,13 @@ fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
 }
 
 fn edit_food(data: &Database, key: &str) -> Result<()> {
-    let food = data.load_food(key)?.unwrap_or_default();
+    let food = data.load::<Food>(key)?.unwrap_or_default();
     let food = edit(&food)?;
-    data.save_food(key, &food)
+    data.save(key, &food)
 }
 
 fn show_food(data: &Database, key: &str) -> Result<()> {
-    let Some(food) = data.load_food(key)? else {
+    let Some(food) = data.load::<Food>(key)? else {
         bail!("No food with key {key:?}");
     };
     let mut table = Table::new(std::iter::once(food));
@@ -224,7 +224,7 @@ fn show_food(data: &Database, key: &str) -> Result<()> {
 // TODO: include keys in data. Probably want to make key a non-serialized struct field.
 fn list_food(data: &Database, term: Option<String>) -> Result<()> {
     let term = term.as_ref().map(|s| s.as_str());
-    let items = data.list_food(&term)?;
+    let items = data.list::<Food>(&term)?;
     let mut table = Table::new(items.filter_map(|x| match x {
         Ok(food) => Some(food),
         Err(err) => {
@@ -237,7 +237,7 @@ fn list_food(data: &Database, term: Option<String>) -> Result<()> {
 }
 
 fn rm_food(data: &Database, key: String) -> Result<()> {
-    data.remove_food(&key)
+    data.remove::<Food>(&key)
 }
 
 #[derive(Deserialize)]
@@ -322,7 +322,7 @@ struct SearchResponse {
 }
 
 fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()> {
-    if data.load_food(&key)?.is_some() {
+    if data.load::<Food>(&key)?.is_some() {
         bail!("Food with key {key} already exists");
     }
 
@@ -377,7 +377,7 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     let idx: usize = res.parse()?;
     let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
-    data.save_food(&key, &food)?;
+    data.save(key.as_str(), food)?;
     println!("Added '{}' as {key}", food.name);
 
     Ok(())
