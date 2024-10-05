@@ -35,6 +35,7 @@ impl<'a> Search<'a> {
             .header("X-Api-Key", "DEMO_KEY")
             .query(&[("query", self.term)])
             .query(&[("pageNumber", self.page)])
+            .query(&[("pageSize", self.page_size)])
             .build()?;
 
         log::debug!("Sending request: {req:?}");
@@ -150,16 +151,23 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::fs;
 
+    fn expect_page(kind: &str, page: usize) -> Expectation {
+        Expectation::matching(all_of![
+            request::method_path("GET", "/test"),
+            request::query(url_decoded(contains(("query", "potato")))),
+            request::query(url_decoded(contains(("pageSize", "2")))),
+            request::query(url_decoded(contains(("pageNumber", page.to_string()))))
+        ])
+        .respond_with(status_code(200).body(
+            fs::read_to_string(format!("tests/testdata/search/{kind}/page{page}.json")).unwrap(),
+        ))
+    }
+
     #[test]
     fn test_search_foundation() {
+        let _ = env_logger::try_init();
         let server = Server::run();
-        server.expect(
-            Expectation::matching(request::method_path("GET", "/test")).respond_with(
-                status_code(200).body(
-                    fs::read_to_string("tests/testdata/search/foundation/page1.json").unwrap(),
-                ),
-            ),
-        );
+        server.expect(expect_page("foundation", 1));
         let url = server.url("/test");
 
         let mut search = Search {
@@ -198,13 +206,9 @@ mod tests {
 
     #[test]
     fn test_search_fndds() {
+        let _ = env_logger::try_init();
         let server = Server::run();
-        server.expect(
-            Expectation::matching(request::method_path("GET", "/test")).respond_with(
-                status_code(200)
-                    .body(fs::read_to_string("tests/testdata/search/fndds/page1.json").unwrap()),
-            ),
-        );
+        server.expect(expect_page("fndds", 1));
         let url = server.url("/test");
 
         let mut search = Search {
@@ -243,14 +247,9 @@ mod tests {
 
     #[test]
     fn test_search_sr_legacy() {
+        let _ = env_logger::try_init();
         let server = Server::run();
-        server.expect(
-            Expectation::matching(request::method_path("GET", "/test")).respond_with(
-                status_code(200).body(
-                    fs::read_to_string("tests/testdata/search/sr_legacy/page1.json").unwrap(),
-                ),
-            ),
-        );
+        server.expect(expect_page("sr_legacy", 1));
         let url = server.url("/test");
 
         let mut search = Search {
@@ -289,13 +288,9 @@ mod tests {
 
     #[test]
     fn test_search_branded() {
+        let _ = env_logger::try_init();
         let server = Server::run();
-        server.expect(
-            Expectation::matching(request::method_path("GET", "/test")).respond_with(
-                status_code(200)
-                    .body(fs::read_to_string("tests/testdata/search/branded/page1.json").unwrap()),
-            ),
-        );
+        server.expect(expect_page("branded", 1));
         let url = server.url("/test");
 
         let mut search = Search {
@@ -329,6 +324,92 @@ mod tests {
                     servings: vec![("g".into(), 140.0), ("cup".into(), 1.0)],
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn test_search_paged() {
+        let _ = env_logger::try_init();
+        let server = Server::run();
+        server.expect(expect_page("foundation", 1));
+        server.expect(expect_page("foundation", 2));
+        server.expect(expect_page("foundation", 3));
+        let url = server.url("/test");
+
+        let mut search = Search {
+            term: "potato",
+            page_size: 2,
+            url: &url.to_string(),
+            page: 1,
+        };
+
+        let actual = search.next_page().unwrap();
+        assert_eq!(
+            actual.iter().collect::<Vec<_>>(),
+            vec![
+                Food {
+                    name: "Flour, potato".into(),
+                    nutrients: Nutrients {
+                        carb: 79.9,
+                        fat: 0.951,
+                        protein: 8.11,
+                        kcal: 353.0
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+                Food {
+                    name: "Potatoes, gold, without skin, raw".into(),
+                    nutrients: Nutrients {
+                        carb: 16.0,
+                        fat: 0.264,
+                        protein: 1.81,
+                        kcal: 71.6,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+            ]
+        );
+
+        let actual = search.next_page().unwrap();
+        assert_eq!(
+            actual.iter().collect::<Vec<_>>(),
+            vec![
+                Food {
+                    name: "Potatoes, red, without skin, raw".into(),
+                    nutrients: Nutrients {
+                        carb: 16.3,
+                        fat: 0.248,
+                        protein: 2.06,
+                        kcal: 73.4,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+                Food {
+                    name: "Potatoes, russet, without skin, raw".into(),
+                    nutrients: Nutrients {
+                        carb: 17.8,
+                        fat: 0.36,
+                        protein: 2.27,
+                        kcal: 81.0,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+            ]
+        );
+
+        let actual = search.next_page().unwrap();
+        assert_eq!(
+            actual.iter().collect::<Vec<_>>(),
+            vec![Food {
+                name: "Sweet potatoes, orange flesh, without skin, raw".into(),
+                nutrients: Nutrients {
+                    carb: 17.3,
+                    fat: 0.375,
+                    protein: 1.58,
+                    kcal: 77.4,
+                },
+                servings: vec![("g".into(), 100.0)],
+            },]
         );
     }
 }
