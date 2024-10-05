@@ -3,14 +3,6 @@ use crate::{nutrients::Nutrients, Data};
 
 use anyhow::{anyhow, bail, Context, Result};
 
-fn format_servings(servings: &Vec<(String, f32)>) -> String {
-    servings
-        .iter()
-        .map(|(unit, size)| format!("{size}{unit}"))
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Ingredient {
@@ -19,7 +11,7 @@ pub struct Ingredient {
     pub food: Food,
 }
 
-#[derive(Debug, tabled::Tabled)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 // FoodSpec defines a food either in terms of nutrients or ingredients.
 pub enum FoodSpec {
@@ -34,7 +26,7 @@ impl Default for FoodSpec {
 }
 
 // Food describes a single food item.
-#[derive(Debug, Default, tabled::Tabled)]
+#[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Food {
     // The display name of the food. This is shown in the UI.
@@ -42,17 +34,23 @@ pub struct Food {
     pub name: String,
 
     // The macronutrients of this food item.
-    #[tabled(inline)]
     pub spec: FoodSpec,
 
     // Ways of describing a single serving of this food.
     // For example, [("g", 100.0), ("cups", 0.5)] means that
     // either 100g or 0.5cups equates to one serving.
-    #[tabled(display_with = "format_servings")]
     pub servings: Vec<(String, f32)>,
 }
 
 impl Food {
+    // Return the nutrients in one serving.
+    pub fn nutrients(&self) -> Nutrients {
+        match &self.spec {
+            FoodSpec::Nutrients(n) => *n,
+            FoodSpec::Ingredients(i) => i.iter().map(|x| x.food.nutrients()).sum(),
+        }
+    }
+
     // Compute the nutrients in a serving of this food.
     // Returns an error if the serving unit is not defined for this food.
     pub fn serve(&self, s: &Serving) -> Result<Nutrients> {

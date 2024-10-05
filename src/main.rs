@@ -52,6 +52,31 @@ struct Args {
 }
 
 #[derive(tabled::Tabled, Default)]
+struct FoodRow {
+    key: String,
+    name: String,
+    #[tabled(inline)]
+    nutrients: Nutrients,
+    servings: String,
+}
+
+impl FoodRow {
+    fn new(key: &str, food: &Food) -> Self {
+        Self {
+            key: key.into(),
+            nutrients: food.nutrients(),
+            name: food.name.clone(),
+            servings: food
+                .servings
+                .iter()
+                .map(|(unit, amount)| format!("{amount}{unit}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        }
+    }
+}
+
+#[derive(tabled::Tabled, Default)]
 struct JournalRow {
     name: String,
     serving: Serving,
@@ -112,9 +137,7 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
         })
         .collect();
     let rows = rows?;
-    let total: Nutrients = rows
-        .iter()
-        .fold(Nutrients::default(), |a, b| a + b.nutrients);
+    let total: Nutrients = rows.iter().map(|x| x.nutrients).sum();
     let mut total = Table::new([[
         "Total".to_string(),
         "".to_string(),
@@ -196,6 +219,7 @@ fn show_food(data: &Database, key: &str) -> Result<()> {
     let Some(food) = data.load_food(key)? else {
         bail!("No food with key {key:?}");
     };
+    let food = FoodRow::new(key, &food);
     let mut table = Table::new(std::iter::once(food));
     println!("{}", table.with(Style::sharp()));
     Ok(())
@@ -205,12 +229,10 @@ fn list_food(data: &Database, pattern: Option<String>) -> Result<()> {
     let pattern = pattern.unwrap_or("".to_string());
     log::debug!("Listing food matching '{pattern}'");
     let items = data.list_food()?;
-    #[derive(tabled::Tabled)]
-    struct Key(#[tabled(rename = "key")] String);
     let mut items: Vec<_> = items
         .filter_map(|x| match x {
             Ok(key) if key.contains(&pattern) => match data.load_food(&key) {
-                Ok(Some(food)) => Some((Key(key), food)),
+                Ok(Some(food)) => Some((key, food)),
                 Ok(None) => {
                     // Should be there, as we just listed it.
                     // Maybe something messed with the DB out of sync.
@@ -231,8 +253,9 @@ fn list_food(data: &Database, pattern: Option<String>) -> Result<()> {
                 None
             }
         })
+        .map(|(key, food)| FoodRow::new(&key, &food))
         .collect();
-    items.sort_by(|a, b| a.0 .0.cmp(&b.0 .0));
+    items.sort_by(|a, b| a.key.cmp(&b.key));
     if !items.is_empty() {
         let mut table = Table::new(items);
         println!("{}", table.with(Style::sharp()));
@@ -273,20 +296,19 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
     loop {
         let foods = search.next_page()?;
-        let mut foods = foods.iter().peekable();
+        let foods: Vec<_> = foods.iter().collect();
 
-        if foods.peek().is_none() {
+        if foods.is_empty() {
             bail!("Found no foods matching '{term}'");
         }
 
-        #[derive(tabled::Tabled)]
-        struct Index(#[tabled(rename = "index")] usize);
-        let foods: Vec<_> = foods
+        let table: Vec<_> = foods
+            .iter()
             .enumerate()
-            .map(|(i, food)| (Index(i), food))
+            .map(|(i, food)| FoodRow::new(&i.to_string(), food))
             .collect();
 
-        let table = Table::new(&foods).with(Style::sharp()).to_string();
+        let table = Table::new(&table).with(Style::sharp()).to_string();
         println!("{table}");
 
         print!("\n[0-{}],(n)ext,(q)uit? ", foods.len().saturating_sub(1));
@@ -310,7 +332,7 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
         }
 
         let idx: usize = res.parse()?;
-        let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
+        let food = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
         data.save_food(key.as_str(), food)?;
         println!("Added '{}' as {key}", food.name);
         return Ok(());

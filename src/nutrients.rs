@@ -36,6 +36,7 @@ impl Nutrients {
         }
     }
 }
+
 impl std::ops::Add<Nutrients> for Nutrients {
     type Output = Nutrients;
 
@@ -46,6 +47,12 @@ impl std::ops::Add<Nutrients> for Nutrients {
             protein: self.protein + rhs.protein,
             kcal: self.kcal + rhs.kcal,
         }
+    }
+}
+
+impl std::iter::Sum for Nutrients {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Nutrients::default(), |a, b| a + b)
     }
 }
 
