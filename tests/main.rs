@@ -8,6 +8,32 @@ struct CLI {
     data_dir: tempfile::TempDir,
 }
 
+fn oats() -> Food {
+    Food {
+        name: "Oats".into(),
+        nutrients: Nutrients {
+            carb: 68.7,
+            fat: 5.89,
+            protein: 13.5,
+            kcal: 382.0,
+        },
+        servings: [("g".into(), 100.0)].into(),
+    }
+}
+
+fn banana() -> Food {
+    Food {
+        name: "Banana".into(),
+        nutrients: Nutrients {
+            carb: 23.0,
+            fat: 0.20,
+            protein: 0.74,
+            kcal: 98.0,
+        },
+        servings: [("g".into(), 100.0)].into(),
+    }
+}
+
 impl CLI {
     fn new() -> Self {
         let cli = Self {
@@ -15,33 +41,8 @@ impl CLI {
         };
 
         // pre-load some data
-        cli.add_food(
-            "oats",
-            &Food {
-                name: "Oats".into(),
-                nutrients: Nutrients {
-                    carb: 68.7,
-                    fat: 5.89,
-                    protein: 13.5,
-                    kcal: 382.0,
-                },
-                servings: [("g".into(), 100.0)].into(),
-            },
-        );
-
-        cli.add_food(
-            "banana",
-            &Food {
-                name: "Banana".into(),
-                nutrients: Nutrients {
-                    carb: 23.0,
-                    fat: 0.20,
-                    protein: 0.74,
-                    kcal: 98.0,
-                },
-                servings: [("g".into(), 100.0)].into(),
-            },
-        );
+        cli.add_food("oats", &oats());
+        cli.add_food("banana", &banana());
 
         cli
     }
@@ -81,6 +82,14 @@ fn matches(pattern: &str) -> predicates::str::RegexPredicate {
     predicates::str::is_match(pattern).unwrap()
 }
 
+fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
+    let n = &food.nutrients;
+    matches(&format!(
+        "{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
+        food.name, n.carb, n.fat, n.protein, n.kcal
+    ))
+}
+
 #[test]
 fn test_show_food_missing() {
     let cli = CLI::new();
@@ -105,6 +114,36 @@ fn test_food_show() {
         .stdout(matches("protein.*13.5"))
         .stdout(matches("kcal.*382"))
         .stdout(matches("g.*100"));
+}
+
+#[test]
+fn test_food_ls() {
+    let cli = CLI::new();
+
+    cli.cmd()
+        .args(["food", "ls"])
+        .assert()
+        .success()
+        .stdout(matches_food(&oats()))
+        .stdout(matches_food(&banana()));
+}
+
+#[test]
+fn test_food_ls_pattern() {
+    let cli = CLI::new();
+
+    cli.cmd()
+        .args(["food", "ls", "oat"])
+        .assert()
+        .success()
+        .stdout(matches_food(&oats()));
+}
+
+#[test]
+fn test_food_ls_pattern_nomatch() {
+    let cli = CLI::new();
+
+    cli.cmd().args(["food", "ls", "nope"]).assert().success();
 }
 
 #[test]
