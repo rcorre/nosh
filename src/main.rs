@@ -334,7 +334,7 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
         let table = Table::new(&foods).with(Style::sharp()).to_string();
         println!("{table}");
 
-        print!("\n[0-{}] or (n)ext? ", foods.len().saturating_sub(1));
+        print!("\n[0-{}],(n)ext,(q)uit? ", foods.len().saturating_sub(1));
         std::io::stdout().flush()?;
 
         let mut res = String::new();
@@ -346,7 +346,10 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
             return Ok(());
         }
 
-        if res.starts_with("n") {
+        if res.starts_with("q") {
+            log::debug!("Quit requested, not adding any food");
+            return Ok(());
+        } else if res.starts_with("n") {
             log::debug!("Getting next page of results");
             continue;
         }
