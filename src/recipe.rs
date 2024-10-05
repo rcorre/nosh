@@ -12,7 +12,10 @@ use anyhow::Result;
 // ```
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Recipe(pub Vec<(String, Serving)>);
+pub struct Recipe {
+    pub name: String,
+    pub ingredients: Vec<(String, Serving)>,
+}
 
 impl Data for Recipe {
     type Key = str;
@@ -26,7 +29,7 @@ impl Data for Recipe {
     }
 
     fn load(r: impl std::io::BufRead) -> Result<Self> {
-        let mut rows = vec![];
+        let mut res = Recipe::default();
         for line in r.lines() {
             let line = line?;
             let line = line.trim();
@@ -34,15 +37,20 @@ impl Data for Recipe {
                 continue;
             }
             match line.split_once("=") {
-                Some((food, serving)) => rows.push((food.trim().into(), serving.parse()?)),
-                None => rows.push((line.trim().into(), Serving::default())),
+                Some(("name", name)) => res.name = name.into(),
+                Some((food, serving)) => {
+                    res.ingredients.push((food.trim().into(), serving.parse()?))
+                }
+                None => res
+                    .ingredients
+                    .push((line.trim().into(), Serving::default())),
             }
         }
-        Ok(Self(rows))
+        Ok(res)
     }
 
     fn save(&self, w: &mut impl std::io::Write) -> Result<()> {
-        for (food, serving) in &self.0 {
+        for (food, serving) in &self.ingredients {
             writeln!(w, "{food} = {serving}")?;
         }
         Ok(())

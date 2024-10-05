@@ -281,4 +281,54 @@ mod tests {
             ["cookies = 1", "crackers = 0.5 cups", "cereal = 50 g", ""].join("\n")
         );
     }
+
+    #[test]
+    fn test_save_recipe() {
+        let (data, tmp) = setup();
+        let recipe = Recipe {
+            name: "Granola".into(),
+            ingredients: vec![
+                (
+                    "oats".into(),
+                    Serving {
+                        size: 6.0,
+                        unit: Some("cups".into()),
+                    },
+                ),
+                (
+                    "oil".into(),
+                    Serving {
+                        size: 0.5,
+                        unit: Some("cups".into()),
+                    },
+                ),
+                (
+                    "maple_syrup".into(),
+                    Serving {
+                        size: 0.5,
+                        unit: Some("cups".into()),
+                    },
+                ),
+            ],
+        };
+        data.save("granola", &recipe).unwrap();
+
+        let actual = fs::read_to_string(
+            tmp.path()
+                .join("recipe")
+                .join("granola")
+                .with_extension("txt"),
+        )
+        .unwrap();
+        assert_eq!(
+            actual,
+            [
+                "oats = 6 cups",
+                "oil = 0.5 cups",
+                "maple_syrup = 0.5 cups",
+                ""
+            ]
+            .join("\n")
+        );
+    }
 }

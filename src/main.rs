@@ -107,7 +107,7 @@ fn edit_recipe(data: &Database, key: &str) -> Result<()> {
 fn show_recipe(data: &Database, key: &str) -> Result<()> {
     let journal = data.load::<Recipe>(key)?.unwrap_or_default();
     let rows: Result<Vec<_>> = journal
-        .0
+        .ingredients
         .iter()
         .map(|(key, serving)| (key, data.load::<Food>(key), serving))
         .map(|(key, food, serving)| match food {
