@@ -87,7 +87,7 @@ impl Database {
             }
         };
         let reader = BufReader::new(file);
-        Ok(Some(Food::load(reader)?))
+        Ok(Some(Food::load(reader, |key| self.load_food(key))?))
     }
 
     pub fn save_journal(&self, key: &NaiveDate, data: &Journal) -> Result<()> {
@@ -114,7 +114,7 @@ impl Database {
             }
         };
         let reader = BufReader::new(file);
-        Ok(Some(Journal::load(reader)?))
+        Ok(Some(Journal::load(reader, |key| self.load_food(key))?))
     }
 
     pub fn remove<T: Data>(&self, key: &T::Key) -> Result<()> {

@@ -132,7 +132,10 @@ impl Data for Food {
             .with_extension("txt")
     }
 
-    fn load(r: impl std::io::BufRead) -> Result<Self> {
+    fn load(
+        r: impl std::io::BufRead,
+        load_food: impl FnMut(&str) -> Result<Option<Food>>,
+    ) -> Result<Self> {
         let mut food = Food::default();
         for line in r.lines() {
             let line = line?;

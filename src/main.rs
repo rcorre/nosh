@@ -90,7 +90,7 @@ fn edit_journal(data: &Database, key: Option<String>) -> Result<()> {
         None => chrono::Local::now().date_naive(),
     };
     let journal = data.load_journal(&date)?.unwrap_or_default();
-    let journal = edit(&journal)?;
+    let journal = edit(&journal, &data)?;
     data.save_journal(&date, &journal)
 }
 
@@ -164,7 +164,7 @@ fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
     data.save_journal(&date, &journal)
 }
 
-fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
+fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T, data: &Database) -> Result<T> {
     let mut tmp = tempfile::Builder::new().suffix(".txt").tempfile()?;
     orig.save(&mut std::io::BufWriter::new(&tmp))?;
     tmp.flush()?;
@@ -184,14 +184,14 @@ fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
 
     let file = fs::File::open(tmp.path())?;
     let reader = std::io::BufReader::new(file);
-    let new = T::load(reader)?;
+    let new = T::load(reader, |key| data.load_food(key))?;
     log::debug!("Parsed: {new:?}");
     Ok(new)
 }
 
 fn edit_food(data: &Database, key: &str) -> Result<()> {
     let food = data.load_food(key)?.unwrap_or_default();
-    let food = edit(&food)?;
+    let food = edit(&food, &data)?;
     data.save_food(key, &food)
 }
 

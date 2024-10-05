@@ -1,4 +1,4 @@
-use crate::{Data, Serving};
+use crate::{Data, Food, Serving};
 use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 
@@ -29,7 +29,10 @@ impl Data for Journal {
         .into()
     }
 
-    fn load(r: impl std::io::BufRead) -> Result<Self> {
+    fn load(
+        r: impl std::io::BufRead,
+        load_food: impl FnMut(&str) -> Result<Option<Food>>,
+    ) -> Result<Self> {
         let mut rows = vec![];
         for line in r.lines() {
             let line = line?;

@@ -1,5 +1,7 @@
 use anyhow::Result;
 
+use crate::Food;
+
 // A type that can be stored in the Database.
 pub trait Data: Sized {
     // The type used to uniquely identify items of this type.
@@ -14,7 +16,10 @@ pub trait Data: Sized {
     fn path(key: &Self::Key) -> std::path::PathBuf;
 
     // Load an item from a reader.
-    fn load(r: impl std::io::BufRead) -> Result<Self>;
+    fn load(
+        r: impl std::io::BufRead,
+        load_food: impl FnMut(&str) -> Result<Option<Food>>,
+    ) -> Result<Self>;
 
     // Save an item to a reader.
     fn save(&self, w: &mut impl std::io::Write) -> Result<()>;
