@@ -1,7 +1,7 @@
-name: Oats
-carb: 68.7
-fat: 5.89
-protein: 13.5
-kcal: 382
-serving: 0.5 cups
-serving: 100g
+name = Oats
+carb = 68.7
+fat = 5.89
+protein = 13.5
+kcal = 382
+serving = 0.5 cups
+serving = 100g

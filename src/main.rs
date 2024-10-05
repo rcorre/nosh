@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nosh::{Database, Nutrients, APP_NAME};
+use nosh::{Database, Nutrients, Serving, APP_NAME};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     fs,
@@ -64,15 +64,10 @@ struct Args {
     command: Command,
 }
 
-fn float1(f: &f32) -> String {
-    format!("{:.1}", f)
-}
-
 #[derive(tabled::Tabled, Default)]
 struct JournalRow {
     name: String,
-    #[tabled(display_with = "float1")]
-    serving: f32,
+    serving: Serving,
     #[tabled(inline)]
     nutrients: Nutrients,
 }
@@ -126,10 +121,10 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
         .0
         .iter()
         .map(|(key, serving)| (data.load_food(key), serving))
-        .map(|(food, &serving)| match food {
+        .map(|(food, serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 name: food.name,
-                1.0, // TODO
+                serving: serving.clone(),        //
                 nutrients: food.nutrients * 1.0, // TODO
             }),
             Ok(None) => Err(anyhow::format_err!("Food not found")),
@@ -170,34 +165,19 @@ fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
     let Some(food) = data.load_food(&key)? else {
         bail!("No food with key {key:?}");
     };
-    let serving = if let Some(serving) = serving {
-        if let Some(idx) = serving.find(|c: char| !c.is_digit(10) && c != '.') {
-            let (amount, unit) = serving.split_at(idx);
-            let mut matches = food.servings.iter().filter(|(k, _)| k.starts_with(unit));
-            let Some((matched_unit, matched_size)) = matches.next() else {
-                bail!("No serving unit matches '{unit}'");
-            };
-            if let Some((next, _)) = matches.next() {
-                bail!("Unit {unit} is ambiguous between '{matched_unit}' and '{next}'");
-            }
-            amount.parse::<f32>()? / matched_size
-        } else {
-            serving.parse()?
-        }
-    } else {
-        1.0
+    let serving = match serving {
+        Some(s) => s.parse()?,
+        None => Serving::default(),
+    };
+    if let Err(err) = food.serve(&serving) {
+        bail!("Invalid serving: {err:?}");
     };
 
     let date = chrono::Local::now();
     log::debug!("Adding food={key} serving={serving} to {date:?}");
 
     let mut journal = data.load_journal(&date)?.unwrap_or_default();
-    journal
-        .0
-        .entry(key)
-        .and_modify(|x| *x += serving)
-        .or_insert(serving);
-
+    journal.0.push((key, serving));
     data.save_journal(&date, &journal)
 }
 
