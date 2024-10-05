@@ -1,6 +1,7 @@
 use std::{io::Write, os::unix::fs::OpenOptionsExt};
 
 use assert_cmd::Command;
+use httptest::http::request;
 use nosh::{Food, Nutrients, APP_NAME};
 use predicates::prelude::*;
 
@@ -68,6 +69,12 @@ impl CLI {
         log::debug!("Test wrote fake editor to {path:?}:\n{editor:?}");
         let mut cmd = self.cmd();
         cmd.env("EDITOR", path);
+        cmd
+    }
+
+    fn search(&self, url: &str) -> Command {
+        let mut cmd = self.cmd();
+        cmd.env("NOSH_SEARCH_URL", url);
         cmd
     }
 
@@ -313,4 +320,76 @@ fn test_eat() {
         .stdout(matches_serving(6.0, &oats()))
         .stdout(matches_serving(1.0, &banana()))
         .stdout(matches_total(&[(6.0, &oats()), (1.0, &banana())]));
+}
+
+#[test]
+fn test_food_search() {
+    use httptest::{matchers::*, responders::*, Expectation, Server};
+
+    let cli = CLI::new();
+    let server = Server::run();
+    server.expect(
+        Expectation::matching(request::method_path("GET", "/test")).respond_with(
+            status_code(200).body(
+                r#"{"foods":[{
+        "fdcId": 2344876,
+        "description": "Potato, NFS",
+        "foodCode": 71000100,
+        "foodCategory": "White potatoes, baked or boiled",
+        "foodCategoryId": 2649423,
+        "foodNutrients": [
+            {
+              "nutrientId": 1003,
+              "nutrientName": "Protein",
+              "unitName": "G",
+              "value": 1.87
+            },
+            {
+              "nutrientId": 1004,
+              "nutrientName": "Total lipid (fat)",
+              "unitName": "G",
+              "value": 4.25
+            },
+            {
+              "nutrientId": 1005,
+              "nutrientName": "Carbohydrate, by difference",
+              "unitName": "G",
+              "value": 20.4
+            },
+            {
+              "nutrientId": 1008,
+              "nutrientName": "Energy",
+              "unitName": "KCAL",
+              "value": 126
+            }
+        ]
+    }]}"#,
+            ),
+        ),
+    );
+    let url = server.url("/test");
+    let food = &Food {
+        name: "Potato, NFS".into(),
+        nutrients: Nutrients {
+            carb: 20.4,
+            fat: 4.25,
+            protein: 1.87,
+            kcal: 126.0,
+        },
+        servings: [].into(),
+    };
+
+    cli.search(&url.to_string())
+        .args(["food", "search", "potato"])
+        .write_stdin("0") // select result 0
+        .assert()
+        .success()
+        .stdout(matches_food(&food));
+
+    // The food should have been added.
+    cli.cmd()
+        .args(["food", "ls", "potato"])
+        .assert()
+        .success()
+        .stdout(matches_food(&food));
 }

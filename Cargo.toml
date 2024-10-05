@@ -25,4 +25,5 @@ xdg = "2.5.2"
 
 [dev-dependencies]
 assert_cmd = "2.0.14"
+httptest = "0.16.1"
 predicates = "3.1.0"

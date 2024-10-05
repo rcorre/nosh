@@ -344,18 +344,29 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
 
     let client = reqwest::blocking::Client::new();
 
+    // This is mostly here to allow injecting a url for testing.
+    let url = std::env::var("NOSH_SEARCH_URL");
+    let url = match url.as_ref() {
+        Ok(url) => url.as_str(),
+        Err(_) => "https://api.nal.usda.gov/fdc/v1/foods/search",
+    };
+
     // https://fdc.nal.usda.gov/api-guide.html
     let req = client
-        .get("https://api.nal.usda.gov/fdc/v1/foods/search")
+        .get(url)
         .header("X-Api-Key", "DEMO_KEY")
-        .query(&[("query", term)])
+        .query(&[("query", &term)])
         .build()?;
 
     log::debug!("Sending request: {req:?}");
 
+    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
+    if res.foods.is_empty() {
+        bail!("Found no foods matching '{term}'");
+    }
+
     #[derive(tabled::Tabled)]
     struct Index(#[tabled(rename = "index")] usize);
-    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
     let foods: Vec<_> = res
         .foods
         .iter()
@@ -366,7 +377,7 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
     let table = Table::new(&foods).with(Style::sharp()).to_string();
     println!("{table}");
 
-    print!("\n[0-{}]? ", foods.len());
+    print!("\n[0-{}]? ", foods.len().saturating_sub(1));
     std::io::stdout().flush()?;
 
     let mut res = String::new();
