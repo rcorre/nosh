@@ -26,5 +26,10 @@ xdg = "2.5.2"
 [dev-dependencies]
 assert_cmd = "2.0.14"
 httptest = "0.16.1"
-predicates = "3.1.0"
+insta = { version = "1.39.0", features = ["filters"] }
+insta-cmd = "0.6.0"
 pretty_assertions = "1.4"
+
+[profile.dev.package]
+insta.opt-level = 3
+similar.opt-level = 3

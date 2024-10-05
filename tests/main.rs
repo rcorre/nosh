@@ -1,37 +1,12 @@
+use std::process::Command;
 use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
-use assert_cmd::Command;
-use nosh::{Food, Nutrients};
-use predicates::prelude::*;
+use insta::internals::SettingsBindDropGuard;
+use insta_cmd::{assert_cmd_snapshot, get_cargo_bin};
 
 struct CLI {
     data_dir: tempfile::TempDir,
-}
-
-fn oats() -> Food {
-    Food {
-        name: "Oats".into(),
-        nutrients: Nutrients {
-            carb: 68.7,
-            fat: 5.89,
-            protein: 13.5,
-            kcal: 382.0,
-        },
-        servings: [("g".into(), 100.0), ("cups".into(), 0.5)].into(),
-    }
-}
-
-fn banana() -> Food {
-    Food {
-        name: "Banana".into(),
-        nutrients: Nutrients {
-            carb: 23.0,
-            fat: 0.20,
-            protein: 0.74,
-            kcal: 98.0,
-        },
-        servings: [("g".into(), 100.0)].into(),
-    }
+    _settings: SettingsBindDropGuard,
 }
 
 fn cp(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
@@ -52,8 +27,13 @@ fn cp(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
 impl CLI {
     fn new() -> Self {
         let _ = env_logger::try_init();
+
+        let mut settings = insta::Settings::clone_current();
+        settings.add_filter("\x1b\\[\\d+m", "");
+
         let cli = Self {
             data_dir: tempfile::tempdir().unwrap(),
+            _settings: settings.bind_to_scope(),
         };
         let dir = cli.data_dir.path().join("nosh");
         fs::create_dir_all(&dir).unwrap();
@@ -62,12 +42,23 @@ impl CLI {
     }
 
     fn cmd(&self) -> Command {
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(get_cargo_bin(env!("CARGO_PKG_NAME")));
         cmd.env("XDG_DATA_HOME", self.data_dir.path());
         cmd
     }
 
-    fn editor(&self, content: &str) -> Command {
+    fn run(&self, args: &[&str]) {
+        assert!(self
+            .cmd()
+            .args(args)
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap()
+            .success())
+    }
+
+    fn edit(&self, kind: &str, key: &str, content: &str) {
         let editor = format!("#!/bin/sh\necho -e {content:?} > $1");
         let path = self.data_dir.path().join("editor");
         std::fs::OpenOptions::new()
@@ -82,7 +73,8 @@ impl CLI {
         log::debug!("Test wrote fake editor to {path:?}:\n{editor:?}");
         let mut cmd = self.cmd();
         cmd.env("EDITOR", path);
-        cmd
+        cmd.args([kind, "edit", key]);
+        assert!(cmd.spawn().unwrap().wait().unwrap().success());
     }
 
     fn search(&self, url: &str) -> Command {
@@ -92,147 +84,74 @@ impl CLI {
     }
 }
 
-fn matches(pattern: &str) -> predicates::str::RegexPredicate {
-    predicates::str::is_match(pattern).unwrap()
-}
-
-fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
-    let n = &food.nutrients;
-    matches(&format!(
-        "{}.*{}.*{:.1}.*{:.1}.*{:.0}",
-        food.name, n.carb, n.fat, n.protein, n.kcal
-    ))
-}
-
-fn matches_serving(serving: f32, food: &Food) -> predicates::str::RegexPredicate {
-    let n = food.nutrients * serving;
-    matches(&format!(
-        "{}.*{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
-        food.name, serving, n.carb, n.fat, n.protein, n.kcal
-    ))
-}
-
-fn matches_serving_str(serving: &str, food: &Food) -> predicates::str::RegexPredicate {
-    let n = food.serve(&serving.parse().unwrap()).unwrap();
-    matches(&format!(
-        "{}.*{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
-        food.name, serving, n.carb, n.fat, n.protein, n.kcal
-    ))
-}
-
-fn matches_total(n: Nutrients) -> predicates::str::RegexPredicate {
-    matches(&format!(
-        "Total.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
-        n.carb, n.fat, n.protein, n.kcal
-    ))
-}
-
 #[test]
 fn test_show_food_missing() {
     let cli = CLI::new();
-
-    cli.cmd()
-        .args(["food", "show", "nope"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("Error: No food with key \"nope\""));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "show", "nope"]));
 }
 
 #[test]
 fn test_food_show() {
     let cli = CLI::new();
-
-    cli.cmd()
-        .args(["food", "show", "oats"])
-        .assert()
-        .success()
-        .stdout(matches_food(&oats()));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "show", "oats"]));
 }
 
 #[test]
 fn test_food_ls() {
     let cli = CLI::new();
-
-    cli.cmd()
-        .args(["food", "ls"])
-        .assert()
-        .success()
-        .stdout(matches_food(&oats()))
-        .stdout(matches_food(&banana()));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "ls"]));
 }
 
 #[test]
 fn test_food_ls_pattern() {
     let cli = CLI::new();
-
-    cli.cmd()
-        .args(["food", "ls", "oat"])
-        .assert()
-        .success()
-        .stdout(matches_food(&oats()));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "ls", "oat"]));
 }
 
 #[test]
 fn test_food_ls_pattern_nomatch() {
     let cli = CLI::new();
-
-    cli.cmd().args(["food", "ls", "nope"]).assert().success();
+    assert_cmd_snapshot!(cli.cmd().args(["food", "ls", "nope"]));
 }
 
 #[test]
 fn test_food_rm() {
     let cli = CLI::new();
 
-    cli.cmd().args(["food", "rm", "oats"]).assert().success();
-    cli.cmd()
-        .args(["food", "ls"])
-        .assert()
-        .success()
-        .stdout(matches_food(&banana()));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "rm", "oats"]));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "ls"]));
 }
 
 #[test]
 fn test_food_rm_not_exist() {
     let cli = CLI::new();
-    cli.cmd().args(["food", "rm", "nope"]).assert().failure();
+    assert_cmd_snapshot!(cli.cmd().args(["food", "rm", "nope"]));
 }
 
 #[test]
 fn test_food_edit_new() {
     let cli = CLI::new();
 
-    cli.editor(
+    cli.edit(
+        "food",
+        "lemon",
         r#"
 name = Lemon
 carb = 4.0
 kcal = 16
 "#,
-    )
-    .args(["food", "edit", "lemon"])
-    .assert()
-    .success();
+    );
 
-    cli.cmd()
-        .args(["food", "show", "lemon"])
-        .assert()
-        .success()
-        .stdout(matches_food(&Food {
-            name: "Lemon".into(),
-            nutrients: Nutrients {
-                carb: 4.0,
-                fat: 0.0,
-                protein: 0.0,
-                kcal: 16.0,
-            },
-            servings: vec![],
-        }));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "show", "lemon"]));
 }
 
 #[test]
 fn test_food_edit_existing() {
     let cli = CLI::new();
 
-    cli.editor(
+    cli.edit(
+        "food",
+        "oats",
         r#"
 name = Oats2
 carb = 30.0
@@ -241,112 +160,33 @@ protein = 24.0
 kcal = 480
 serving = 200.0 g
 serving = 2.5cups"#,
-    )
-    .args(["food", "edit", "oats"])
-    .assert()
-    .success();
+    );
 
-    cli.cmd()
-        .args(["food", "show", "oats"])
-        .assert()
-        .success()
-        .stdout(matches_food(&Food {
-            name: "Oats2".into(),
-            nutrients: Nutrients {
-                carb: 30.0,
-                fat: 8.1,
-                protein: 24.0,
-                kcal: 480.0,
-            },
-            servings: vec![("g".into(), 200.0), ("cups".into(), 2.5)],
-        }));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "show", "oats"]));
 }
 
 #[test]
 fn test_eat_missing() {
     let cli = CLI::new();
-
-    cli.cmd()
-        .args(["eat", "nope"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("Error: No food with key \"nope\""));
+    assert_cmd_snapshot!(cli.cmd().args(["eat", "nope"]));
 }
 
 #[test]
 fn test_eat() {
     let cli = CLI::new();
 
-    // Add one serving
-    cli.cmd().args(["eat", "oats"]).assert().success();
-    cli.cmd()
-        .args(["journal", "show"])
-        .assert()
-        .success()
-        .stdout(matches_serving(1.0, &oats()))
-        .stdout(matches_total(oats().nutrients));
-
-    // Add 2.5 servings
-    cli.cmd().args(["eat", "oats", "2.5"]).assert().success();
-    cli.cmd()
-        .args(["journal", "show"])
-        .assert()
-        .success()
-        .stdout(matches_serving(1.0, &oats()))
-        .stdout(matches_serving(2.5, &oats()))
-        .stdout(matches_total(oats().nutrients * 3.5));
-
-    // Add one serving of banana
-    cli.cmd().args(["eat", "banana"]).assert().success();
-    cli.cmd()
-        .args(["journal", "show"])
-        .assert()
-        .success()
-        .stdout(matches_serving(1.0, &oats()))
-        .stdout(matches_serving(2.5, &oats()))
-        .stdout(matches_serving(1.0, &banana()))
-        .stdout(matches_total(Nutrients {
-            carb: 263.5,
-            fat: 20.8,
-            protein: 48.0,
-            kcal: 1435.0,
-        }));
-
-    // Add one cup (two servings) of oats
-    cli.cmd().args(["eat", "oats", "1cups"]).assert().success();
-    cli.cmd()
-        .args(["journal", "show"])
-        .assert()
-        .success()
-        .stdout(matches_serving(1.0, &oats()))
-        .stdout(matches_serving(2.5, &oats()))
-        .stdout(matches_serving(1.0, &banana()))
-        .stdout(matches_serving_str("1 cups", &oats()))
-        .stdout(matches_total(
-            oats().nutrients + oats().nutrients * 2.5 + banana().nutrients + oats().nutrients * 2.0,
-        ));
+    cli.run(&["eat", "oats"]);
+    cli.run(&["eat", "oats", "2.5"]);
+    cli.run(&["eat", "banana"]);
+    cli.run(&["eat", "oats", "1cups"]);
+    cli.run(&["eat", "oats", "0.25c"]);
 
     // Add 0.25 cup (half serving) of oats
-    cli.cmd().args(["eat", "oats", "0.25c"]).assert().success();
-    cli.cmd()
-        .args(["journal", "show"])
-        .assert()
-        .success()
-        .stdout(matches_serving(1.0, &oats()))
-        .stdout(matches_serving(2.5, &oats()))
-        .stdout(matches_serving(1.0, &banana()))
-        .stdout(matches_serving_str("1 cups", &oats()))
-        .stdout(matches_serving_str("0.25 c", &oats()))
-        .stdout(matches_total(
-            oats().nutrients
-                + oats().nutrients * 2.5
-                + banana().nutrients
-                + oats().nutrients * 2.0
-                + oats().nutrients * 0.5,
-        ));
+    assert_cmd_snapshot!(cli.cmd().args(["journal", "show"]));
 }
 
 #[test]
+
 fn test_food_search() {
     use httptest::{matchers::*, responders::*, Expectation, Server};
 
@@ -360,79 +200,33 @@ fn test_food_search() {
     );
     let url = server.url("/test");
 
-    cli.search(&url.to_string())
-        .args(["food", "search", "potato"])
-        .write_stdin("1") // select result 1
-        .assert()
-        .success()
-        .stdout(matches_food(&Food {
-            name: "Flour, potato".into(),
-            nutrients: Nutrients {
-                carb: 79.9,
-                fat: 1.0,
-                protein: 8.1,
-                kcal: 353.0,
-            },
-            servings: vec![],
-        }))
-        .stdout(matches_food(&Food {
-            name: "Potatoes, gold, without skin, raw".into(),
-            nutrients: Nutrients {
-                carb: 16.0,
-                fat: 0.3,
-                protein: 1.8,
-                kcal: 72.0,
-            },
-            servings: vec![],
-        }));
+    assert_cmd_snapshot!(
+        cli.search(&url.to_string())
+            .args(["food", "search", "potato"])
+            .pass_stdin("1") // select result 1
+    );
 
     // The food should have been added.
-    cli.cmd()
-        .args(["food", "show", "potato"])
-        .assert()
-        .success()
-        .stdout(matches_food(&Food {
-            name: "Potatoes, gold, without skin, raw".into(),
-            nutrients: Nutrients {
-                carb: 16.0,
-                fat: 0.3,
-                protein: 1.8,
-                kcal: 72.0,
-            },
-            servings: vec![],
-        }));
+    assert_cmd_snapshot!(cli.cmd().args(["food", "show", "potato"]));
 }
 
 #[test]
 fn test_journal_show() {
     let cli = CLI::new();
-
-    cli.cmd()
-        .args(["recipe", "show", "banana_oatmeal"])
-        .assert()
-        .success()
-        .stdout(matches_serving_str("0.5 c", &oats()))
-        .stdout(matches_serving_str("150 g", &banana()));
+    assert_cmd_snapshot!(cli.cmd().args(["journal", "show", "2024-07-01"]));
 }
 
 #[test]
 fn test_journal_edit() {
     let cli = CLI::new();
 
-    cli.editor(
+    cli.edit(
+        "journal",
+        "2024-07-01",
         r#"
 oats = 1.5c
 banana
 "#,
-    )
-    .args(["recipe", "edit", "banana_oatmeal"])
-    .assert()
-    .success();
-
-    cli.cmd()
-        .args(["recipe", "show", "banana_oatmeal"])
-        .assert()
-        .success()
-        .stdout(matches_serving_str("1.5 c", &oats()))
-        .stdout(matches_serving(1.0, &banana()));
+    );
+    assert_cmd_snapshot!(cli.cmd().args(["journal", "show", "2024-07-01"]));
 }

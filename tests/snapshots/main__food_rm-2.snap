@@ -1,0 +1,20 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - ls
+  env:
+    XDG_DATA_HOME: /tmp/.tmpPd9Xzx
+---
+success: true
+exit_code: 0
+----- stdout -----
+┌────────┬──────┬─────┬─────────┬──────┬──────────┐
+│ name   │ carb │ fat │ protein │ kcal │ servings │
+├────────┼──────┼─────┼─────────┼──────┼──────────┤
+│ Banana │ 23.0 │ 0.2 │ 0.7     │ 98   │ 100g     │
+└────────┴──────┴─────┴─────────┴──────┴──────────┘
+
+----- stderr -----

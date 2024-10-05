@@ -1,0 +1,21 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - show
+    - oats
+  env:
+    XDG_DATA_HOME: /tmp/.tmpsitgRB
+---
+success: true
+exit_code: 0
+----- stdout -----
+┌──────┬──────┬─────┬─────────┬──────┬──────────────┐
+│ name │ carb │ fat │ protein │ kcal │ servings     │
+├──────┼──────┼─────┼─────────┼──────┼──────────────┤
+│ Oats │ 68.7 │ 5.9 │ 13.5    │ 382  │ 0.5cups,100g │
+└──────┴──────┴─────┴─────────┴──────┴──────────────┘
+
+----- stderr -----

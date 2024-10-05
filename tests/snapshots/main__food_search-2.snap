@@ -1,0 +1,21 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - show
+    - potato
+  env:
+    XDG_DATA_HOME: /tmp/.tmpANRul1
+---
+success: true
+exit_code: 0
+----- stdout -----
+┌───────────────────────────────────┬──────┬─────┬─────────┬──────┬──────────┐
+│ name                              │ carb │ fat │ protein │ kcal │ servings │
+├───────────────────────────────────┼──────┼─────┼─────────┼──────┼──────────┤
+│ Potatoes, gold, without skin, raw │ 16.0 │ 0.3 │ 1.8     │ 72   │ 100g     │
+└───────────────────────────────────┴──────┴─────┴─────────┴──────┴──────────┘
+
+----- stderr -----

@@ -1,0 +1,17 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - show
+    - nope
+  env:
+    XDG_DATA_HOME: /tmp/.tmpmVvPT3
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Error: No food with key "nope"

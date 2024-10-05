@@ -1,0 +1,19 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - ls
+    - nope
+  env:
+    XDG_DATA_HOME: /tmp/.tmpWqAoM9
+---
+success: true
+exit_code: 0
+----- stdout -----
+┌──────┬──────┬─────┬─────────┬──────┬──────────┐
+│ name │ carb │ fat │ protein │ kcal │ servings │
+├──────┼──────┼─────┼─────────┼──────┼──────────┤
+
+----- stderr -----

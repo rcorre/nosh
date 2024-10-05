@@ -1,0 +1,17 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - rm
+    - nope
+  env:
+    XDG_DATA_HOME: /tmp/.tmpgXOCKB
+---
+success: false
+exit_code: 1
+----- stdout -----
+
+----- stderr -----
+Error: No such file or directory (os error 2)

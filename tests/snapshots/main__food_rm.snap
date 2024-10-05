@@ -1,0 +1,16 @@
+---
+source: tests/main.rs
+info:
+  program: nosh
+  args:
+    - food
+    - rm
+    - oats
+  env:
+    XDG_DATA_HOME: /tmp/.tmpPd9Xzx
+---
+success: true
+exit_code: 0
+----- stdout -----
+
+----- stderr -----
