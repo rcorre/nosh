@@ -13,10 +13,9 @@ pub use recipe::*;
 pub use serving::*;
 
 use anyhow::{anyhow, bail, Context, Result};
-use chrono::Datelike as _;
 use std::fs;
-use std::io::{BufReader, BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::io::{BufReader, BufWriter};
+use std::path::PathBuf;
 
 pub const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 
@@ -105,9 +104,10 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
-    use crate::nutrients::Nutrients;
-
     use super::*;
+    use crate::nutrients::Nutrients;
+    use chrono::Datelike as _;
+    use std::path::Path;
 
     //https://stackoverflow.com/a/65192210/1435461
     fn cp(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
