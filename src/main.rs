@@ -71,6 +71,19 @@ impl Nutrients {
     }
 }
 
+impl std::ops::Mul<f32> for Nutrients {
+    type Output = Nutrients;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Nutrients {
+            carb: Some(self.carb() * rhs),
+            fat: Some(self.fat() * rhs),
+            protein: Some(self.protein() * rhs),
+            kcal: Some(self.kcal() * rhs),
+        }
+    }
+}
+
 #[test]
 fn test_nutrient_defaults() {
     let nut = Nutrients {
@@ -185,21 +198,38 @@ impl Data {
         Ok(toml::from_str(&raw)?)
     }
 
-    pub fn journal(&self, date: impl chrono::Datelike) -> Result<Journal> {
+    // Fetch the journal for the given date.
+    // Returns None if there is no journal for that date.
+    pub fn journal(&self, date: impl chrono::Datelike) -> Result<Option<Journal>> {
         let path = self
             .journal_dir
             .join(format!("{:04}", date.year()))
             .join(format!("{:02}", date.month()))
             .join(format!("{:02}", date.day()))
             .with_extension("toml");
-        let raw = fs::read_to_string(&path).with_context(|| format!("Reading {path:?}"))?;
+        let raw = match fs::read_to_string(&path) {
+            Ok(s) => Ok(s),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::debug!("Not found: {path:?}");
+                return Ok(None);
+            }
+            Err(e) => Err(e).with_context(|| "Opening {path:?}"),
+        }?;
+        //.with_context(|| format!("Reading {path:?}"))?;
         Ok(toml::from_str(&raw)?)
     }
 }
 
 // Journal is a record of food consumed during a day.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct Journal(HashMap<String, f32>);
+
+// #[derive(tabled::Tabled)]
+// struct JournalRow {
+//     name: String,
+//     serving: f32,
+//     nutrients: Nutrients,
+// }
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -214,14 +244,39 @@ fn main() -> Result<()> {
     match args.command {
         Command::Nom(args) => nom(&data, args),
         Command::Show(args) => show(&data, args),
-    }
+    }?;
 
     Ok(())
 }
 
-fn show(data: &Data, args: ShowArgs) {
+fn show(data: &Data, args: ShowArgs) -> Result<()> {
     let now = chrono::Local::now();
-    let journal = data.journal(now);
+    let journal = data.journal(now)?.unwrap_or_default();
+    let rows: Result<Vec<_>> = journal
+        .0
+        .iter()
+        .map(|(key, serving)| {
+            data.food(key).map(|food| {
+                (
+                    food.name,
+                    serving,
+                    food.nutrients.carb() * serving,
+                    food.nutrients.fat() * serving,
+                    food.nutrients.protein() * serving,
+                    food.nutrients.kcal() * serving,
+                )
+            })
+        })
+        .collect();
+    let rows = rows?;
+    let mut table = tabled::Table::new(rows);
+    table
+        .with(tabled::settings::themes::ColumnNames::default())
+        .with(tabled::settings::Style::modern());
+    println!("{}", table);
+    Ok(())
 }
 
-fn nom(data: &Data, args: NomArgs) {}
+fn nom(data: &Data, args: NomArgs) -> Result<()> {
+    Ok(())
+}
