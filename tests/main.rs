@@ -42,7 +42,9 @@ fn cp(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
         if ty.is_dir() {
             cp(entry.path(), dst.as_ref().join(entry.file_name()));
         } else {
-            fs::copy(entry.path(), dst.as_ref().join(entry.file_name())).unwrap();
+            let dst = dst.as_ref().join(entry.file_name());
+            fs::copy(entry.path(), &dst).unwrap();
+            log::trace!("Copied {entry:?} to {dst:?}");
         }
     }
 }
@@ -53,7 +55,9 @@ impl CLI {
         let cli = Self {
             data_dir: tempfile::tempdir().unwrap(),
         };
-        cp("tests/testdata", cli.data_dir.path());
+        let dir = cli.data_dir.path().join("nosh");
+        fs::create_dir_all(&dir).unwrap();
+        cp("tests/testdata", &dir);
         cli
     }
 
@@ -95,7 +99,7 @@ fn matches(pattern: &str) -> predicates::str::RegexPredicate {
 fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
     let n = &food.nutrients;
     matches(&format!(
-        "{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
+        "{}.*{}.*{:.1}.*{:.1}.*{:.0}",
         food.name, n.carb, n.fat, n.protein, n.kcal
     ))
 }
@@ -103,17 +107,20 @@ fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
 fn matches_serving(serving: f32, food: &Food) -> predicates::str::RegexPredicate {
     let n = food.nutrients * serving;
     matches(&format!(
-        "{}.*{:.1}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
+        "{}.*{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
         food.name, serving, n.carb, n.fat, n.protein, n.kcal
     ))
 }
 
-fn matches_total(servings: &[(f32, &Food)]) -> predicates::str::RegexPredicate {
-    let n = servings
-        .iter()
-        .map(|(serving, food)| food.nutrients * *serving)
-        .reduce(|acc, e| acc + e)
-        .unwrap();
+fn matches_serving_str(serving: &str, food: &Food) -> predicates::str::RegexPredicate {
+    let n = food.serve(&serving.parse().unwrap()).unwrap();
+    matches(&format!(
+        "{}.*{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
+        food.name, serving, n.carb, n.fat, n.protein, n.kcal
+    ))
+}
+
+fn matches_total(n: Nutrients) -> predicates::str::RegexPredicate {
     matches(&format!(
         "Total.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
         n.carb, n.fat, n.protein, n.kcal
@@ -276,7 +283,7 @@ fn test_eat() {
         .assert()
         .success()
         .stdout(matches_serving(1.0, &oats()))
-        .stdout(matches_total(&[(1.0, &oats())]));
+        .stdout(matches_total(oats().nutrients));
 
     // Add 2.5 servings
     cli.cmd().args(["eat", "oats", "2.5"]).assert().success();
@@ -284,8 +291,9 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches_serving(3.5, &oats()))
-        .stdout(matches_total(&[(3.5, &oats())]));
+        .stdout(matches_serving(1.0, &oats()))
+        .stdout(matches_serving(2.5, &oats()))
+        .stdout(matches_total(oats().nutrients * 3.5));
 
     // Add one serving of banana
     cli.cmd().args(["eat", "banana"]).assert().success();
@@ -293,9 +301,15 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches_serving(3.5, &oats()))
+        .stdout(matches_serving(1.0, &oats()))
+        .stdout(matches_serving(2.5, &oats()))
         .stdout(matches_serving(1.0, &banana()))
-        .stdout(matches_total(&[(3.5, &oats()), (1.0, &banana())]));
+        .stdout(matches_total(Nutrients {
+            carb: 263.5,
+            fat: 20.8,
+            protein: 48.0,
+            kcal: 1435.0,
+        }));
 
     // Add one cup (two servings) of oats
     cli.cmd().args(["eat", "oats", "1cups"]).assert().success();
@@ -303,9 +317,13 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches_serving(5.5, &oats()))
+        .stdout(matches_serving(1.0, &oats()))
+        .stdout(matches_serving(2.5, &oats()))
         .stdout(matches_serving(1.0, &banana()))
-        .stdout(matches_total(&[(5.5, &oats()), (1.0, &banana())]));
+        .stdout(matches_serving_str("1 cups", &oats()))
+        .stdout(matches_total(
+            oats().nutrients + oats().nutrients * 2.5 + banana().nutrients + oats().nutrients * 2.0,
+        ));
 
     // Add 0.25 cup (half serving) of oats
     cli.cmd().args(["eat", "oats", "0.25c"]).assert().success();
@@ -313,9 +331,18 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches_serving(6.0, &oats()))
+        .stdout(matches_serving(1.0, &oats()))
+        .stdout(matches_serving(2.5, &oats()))
         .stdout(matches_serving(1.0, &banana()))
-        .stdout(matches_total(&[(6.0, &oats()), (1.0, &banana())]));
+        .stdout(matches_serving_str("1 cups", &oats()))
+        .stdout(matches_serving_str("0.25 c", &oats()))
+        .stdout(matches_total(
+            oats().nutrients
+                + oats().nutrients * 2.5
+                + banana().nutrients
+                + oats().nutrients * 2.0
+                + oats().nutrients * 0.5,
+        ));
 }
 
 #[test]

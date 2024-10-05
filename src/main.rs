@@ -120,9 +120,9 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
         .map(|(key, serving)| (data.load::<Food>(key), serving))
         .map(|(food, serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
+                serving: serving.clone(),
+                nutrients: food.serve(serving)?,
                 name: food.name,
-                serving: serving.clone(),        //
-                nutrients: food.nutrients * 1.0, // TODO
             }),
             Ok(None) => Err(anyhow::format_err!("Food not found")),
             Err(err) => Err(err),
