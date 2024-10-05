@@ -65,9 +65,14 @@ struct Args {
     command: Command,
 }
 
+fn float1(f: &f32) -> String {
+    format!("{:.1}", f)
+}
+
 #[derive(tabled::Tabled, Default)]
 struct JournalRow {
     name: String,
+    #[tabled(display_with = "float1")]
     serving: f32,
     #[tabled(inline)]
     nutrients: Nutrients,

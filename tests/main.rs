@@ -90,6 +90,26 @@ fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
     ))
 }
 
+fn matches_serving(serving: f32, food: &Food) -> predicates::str::RegexPredicate {
+    let n = food.nutrients * serving;
+    matches(&format!(
+        "{}.*{:.1}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
+        food.name, serving, n.carb, n.fat, n.protein, n.kcal
+    ))
+}
+
+fn matches_total(servings: &[(f32, &Food)]) -> predicates::str::RegexPredicate {
+    let n = servings
+        .iter()
+        .map(|(serving, food)| food.nutrients * *serving)
+        .reduce(|acc, e| acc + e)
+        .unwrap();
+    matches(&format!(
+        "Total.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
+        n.carb, n.fat, n.protein, n.kcal
+    ))
+}
+
 #[test]
 fn test_show_food_missing() {
     let cli = CLI::new();
@@ -249,8 +269,8 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches("Oats.*1.*68.7.*5.9.*13.5.*382"))
-        .stdout(matches("Total.*1.*68.7.*5.9.*13.5.*382"));
+        .stdout(matches_serving(1.0, &oats()))
+        .stdout(matches_total(&[(1.0, &oats())]));
 
     // Add 2.5 servings
     cli.cmd().args(["eat", "oats", "2.5"]).assert().success();
@@ -258,8 +278,8 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches("Oats.*3.5.*240.4.*20.6.*47.2.*1337"))
-        .stdout(matches("Total.*240.4.*20.6.*47.2.*1337"));
+        .stdout(matches_serving(3.5, &oats()))
+        .stdout(matches_total(&[(3.5, &oats())]));
 
     // Add one serving of banana
     cli.cmd().args(["eat", "banana"]).assert().success();
@@ -267,7 +287,7 @@ fn test_eat() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches("Oats.*3.5.*240.4.*20.6.*47.2.*1337"))
-        .stdout(matches("Banana.*1.*23.0.*0.2.*0.7.*98"))
-        .stdout(matches("Total.*263.4.*20.8.*48.0.*1435"));
+        .stdout(matches_serving(3.5, &oats()))
+        .stdout(matches_serving(1.0, &banana()))
+        .stdout(matches_total(&[(3.5, &oats()), (1.0, &banana())]));
 }
