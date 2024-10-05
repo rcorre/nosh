@@ -274,13 +274,19 @@ fn show_food(data: &Database, key: &str) -> Result<()> {
 fn list_food(data: &Database, term: Option<String>) -> Result<()> {
     let term = term.as_ref().map(|s| s.as_str());
     let items = data.list::<Food>(&term)?;
-    let mut table = Table::new(items.filter_map(|x| match x {
-        Ok(food) => Some(food),
-        Err(err) => {
-            log::error!("Failed to list food: {err:?}");
-            None
-        }
-    }));
+    #[derive(tabled::Tabled)]
+    struct Key(#[tabled(rename = "key")] String);
+    let mut items: Vec<_> = items
+        .filter_map(|x| match x {
+            Ok((key, food)) => Some((Key(key), food)),
+            Err(err) => {
+                log::error!("Failed to list food: {err:?}");
+                None
+            }
+        })
+        .collect();
+    items.sort_by(|a, b| a.0 .0.cmp(&b.0 .0));
+    let mut table = Table::new(items);
     println!("{}", table.with(Style::sharp()));
     Ok(())
 }

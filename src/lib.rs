@@ -53,10 +53,12 @@ impl Database {
         Ok(Database { dir: dir.into() })
     }
 
+    // Return a list of (key, item) pairs.
+    // If `term` is Some, only return items containing `term`.
     pub fn list<'a, T: Data>(
         &self,
         term: &'a Option<&str>,
-    ) -> Result<impl Iterator<Item = Result<T>> + 'a> {
+    ) -> Result<impl Iterator<Item = Result<(String, T)>> + 'a> {
         let term = term.as_ref().unwrap_or(&"");
         let dir = self.dir.join(T::DIR);
         log::trace!("Listing {dir:?}");
@@ -65,10 +67,18 @@ impl Database {
                 Ok(e) => e.path().as_path().to_string_lossy().contains(term),
                 Err(_) => false, // propagate errors through
             })
-            .map(|e| -> Result<T> {
-                let f = fs::File::open(e?.path())?;
+            .map(|e| -> Result<(String, T)> {
+                let path = e?.path();
+                let f = fs::File::open(&path)?;
                 let r = std::io::BufReader::new(f);
-                T::load(r)
+                let path = path.with_extension("");
+                let key = path
+                    .file_name()
+                    .with_context(|| format!("Invalid path: {path:?}"))?
+                    .to_str()
+                    .with_context(|| format!("Non UTF-8 path: {path:?}"))?;
+                let obj = T::load(r)?;
+                Ok((key.to_string(), obj))
             }))
     }
 
@@ -170,16 +180,19 @@ mod tests {
             .unwrap();
         assert_eq!(
             actual,
-            vec![Food {
-                name: "Oats".into(),
-                nutrients: Nutrients {
-                    carb: 68.7,
-                    fat: 5.89,
-                    protein: 13.5,
-                    kcal: 382.0,
-                },
-                servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
-            }]
+            vec![(
+                "oats".to_string(),
+                Food {
+                    name: "Oats".into(),
+                    nutrients: Nutrients {
+                        carb: 68.7,
+                        fat: 5.89,
+                        protein: 13.5,
+                        kcal: 382.0,
+                    },
+                    servings: vec![("cups".into(), 0.5), ("g".into(), 100.0)],
+                }
+            )]
         );
     }
 
