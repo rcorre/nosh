@@ -139,6 +139,7 @@ fn test_food_edit_new() {
         "lemon",
         r#"
 name = Lemon
+[nutrients]
 carb = 4.0
 kcal = 16
 "#,
@@ -156,12 +157,14 @@ fn test_food_edit_existing() {
         "oats",
         r#"
 name = Oats2
+[nutrients]
 carb = 30.0
 fat = 8.10
 protein = 24.0
 kcal = 480
-serving = 200.0 g
-serving = 2.5cups"#,
+[servings]
+g = 200.0
+cups = 2.5"#,
     );
 
     assert_cmd_snapshot!(cli.cmd().args(["food", "show", "oats"]));
