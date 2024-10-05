@@ -10,9 +10,40 @@ struct CLI {
 
 impl CLI {
     fn new() -> Self {
-        Self {
+        let cli = Self {
             data_dir: tempfile::tempdir().unwrap(),
-        }
+        };
+
+        // pre-load some data
+        cli.add_food(
+            "oats",
+            &Food {
+                name: "Oats".into(),
+                nutrients: Nutrients {
+                    carb: 68.7,
+                    fat: 5.89,
+                    protein: 13.5,
+                    kcal: 382.0,
+                },
+                servings: [("g".into(), 100.0)].into(),
+            },
+        );
+
+        cli.add_food(
+            "banana",
+            &Food {
+                name: "Banana".into(),
+                nutrients: Nutrients {
+                    carb: 23.0,
+                    fat: 0.20,
+                    protein: 0.74,
+                    kcal: 98.0,
+                },
+                servings: [("g".into(), 100.0)].into(),
+            },
+        );
+
+        cli
     }
 
     fn cmd(&self) -> Command {
@@ -62,25 +93,8 @@ fn test_show_food_missing() {
 }
 
 #[test]
-fn test_edit_food() {
+fn test_food_show() {
     let cli = CLI::new();
-
-    // Edit a new food
-    cli.editor(
-        r#"
-name = "Oats"
-[nutrients]
-carb = 68.7
-fat = 5.89
-protein = 13.5
-kcal = 382
-[servings]
-g = 100.0
-        "#,
-    )
-    .args(["food", "edit", "oats"])
-    .assert()
-    .success();
 
     cli.cmd()
         .args(["food", "show", "oats"])
@@ -91,8 +105,43 @@ g = 100.0
         .stdout(matches("protein.*13.5"))
         .stdout(matches("kcal.*382"))
         .stdout(matches("g.*100"));
+}
 
-    // Edit the existing food
+#[test]
+fn test_food_edit_new() {
+    let cli = CLI::new();
+
+    cli.editor(
+        r#"
+name = "Lemon"
+[nutrients]
+carb = 4.0
+fat = 0
+protein = 0
+kcal = 16
+[servings]
+g = 100.0
+        "#,
+    )
+    .args(["food", "edit", "lemon"])
+    .assert()
+    .success();
+
+    cli.cmd()
+        .args(["food", "show", "lemon"])
+        .assert()
+        .success()
+        .stdout(matches("carb.*4.0"))
+        .stdout(matches("fat.*0.0"))
+        .stdout(matches("protein.*0.0"))
+        .stdout(matches("kcal.*16"))
+        .stdout(matches("g.*100"));
+}
+
+#[test]
+fn test_food_edit_existing() {
+    let cli = CLI::new();
+
     cli.editor(
         r#"
 name = "Oats"
@@ -123,7 +172,7 @@ cups = 0.5
 }
 
 #[test]
-fn test_eat_food_missing() {
+fn test_eat_missing() {
     let cli = CLI::new();
 
     cli.cmd()
@@ -136,34 +185,6 @@ fn test_eat_food_missing() {
 #[test]
 fn test_eat() {
     let cli = CLI::new();
-
-    cli.add_food(
-        "oats",
-        &Food {
-            name: "Oats".into(),
-            nutrients: Nutrients {
-                carb: 68.7,
-                fat: 5.89,
-                protein: 13.5,
-                kcal: 382.0,
-            },
-            servings: [("g".into(), 100.0)].into(),
-        },
-    );
-
-    cli.add_food(
-        "banana",
-        &Food {
-            name: "Banana".into(),
-            nutrients: Nutrients {
-                carb: 23.0,
-                fat: 0.20,
-                protein: 0.74,
-                kcal: 98.0,
-            },
-            servings: [("g".into(), 100.0)].into(),
-        },
-    );
 
     // Add one serving
     cli.cmd().args(["eat", "oats"]).assert().success();
