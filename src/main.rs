@@ -16,7 +16,7 @@ use tabled::{
     Table,
 };
 
-const APP_NAME: &'static str = "nom";
+const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 
 #[derive(Subcommand)]
 enum FoodCommand {

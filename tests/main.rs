@@ -16,7 +16,7 @@ impl CLI {
     }
 
     fn cmd(&self) -> Command {
-        let mut cmd = Command::cargo_bin("nom").unwrap();
+        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
         cmd.env("XDG_DATA_HOME", self.data_dir.path());
         cmd
     }
