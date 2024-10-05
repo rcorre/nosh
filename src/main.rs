@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
-use nosh::{Database, Food, Journal, Nutrients, Serving, APP_NAME};
+use nosh::{Database, Food, Nutrients, Serving, APP_NAME};
 use std::{fs, io::Write};
 use tabled::{
     settings::{
@@ -89,9 +89,9 @@ fn edit_journal(data: &Database, key: Option<String>) -> Result<()> {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
-    let journal = data.load::<Journal>(&date)?.unwrap_or_default();
+    let journal = data.load_journal(&date)?.unwrap_or_default();
     let journal = edit(&journal)?;
-    data.save(&date, &journal)
+    data.save_journal(&date, &journal)
 }
 
 fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
@@ -99,11 +99,11 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
         Some(key) => chrono::NaiveDate::parse_from_str(&key, "%Y-%m-%d")?,
         None => chrono::Local::now().date_naive(),
     };
-    let journal = data.load::<Journal>(&date)?.unwrap_or_default();
+    let journal = data.load_journal(&date)?.unwrap_or_default();
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (key, data.load::<Food>(key), serving))
+        .map(|(key, serving)| (key, data.load_food(key), serving))
         .map(|(key, food, serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 serving: serving.clone(),
@@ -145,7 +145,7 @@ fn show_journal(data: &Database, key: Option<String>) -> Result<()> {
 }
 
 fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
-    let Some(food) = data.load::<Food>(&key)? else {
+    let Some(food) = data.load_food(&key)? else {
         bail!("No food with key {key:?}");
     };
     let serving = match serving {
@@ -159,9 +159,9 @@ fn eat(data: &Database, key: String, serving: Option<String>) -> Result<()> {
     let date = chrono::Local::now().date_naive();
     log::debug!("Adding food={key} serving={serving} to {date:?}");
 
-    let mut journal = data.load::<Journal>(&date)?.unwrap_or_default();
+    let mut journal = data.load_journal(&date)?.unwrap_or_default();
     journal.0.push((key, serving));
-    data.save(&date, &journal)
+    data.save_journal(&date, &journal)
 }
 
 fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
@@ -190,13 +190,13 @@ fn edit<T: nosh::Data + std::fmt::Debug>(orig: &T) -> Result<T> {
 }
 
 fn edit_food(data: &Database, key: &str) -> Result<()> {
-    let food = data.load::<Food>(key)?.unwrap_or_default();
+    let food = data.load_food(key)?.unwrap_or_default();
     let food = edit(&food)?;
-    data.save(key, &food)
+    data.save_food(key, &food)
 }
 
 fn show_food(data: &Database, key: &str) -> Result<()> {
-    let Some(food) = data.load::<Food>(key)? else {
+    let Some(food) = data.load_food(key)? else {
         bail!("No food with key {key:?}");
     };
     let mut table = Table::new(std::iter::once(food));
@@ -232,7 +232,7 @@ fn rm_food(data: &Database, key: String) -> Result<()> {
 }
 
 fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()> {
-    if data.load::<Food>(&key)?.is_some() {
+    if data.load_food(&key)?.is_some() {
         bail!("Food with key {key} already exists");
     }
 
@@ -298,7 +298,7 @@ fn search_food(data: &Database, key: String, term: Option<String>) -> Result<()>
 
         let idx: usize = res.parse()?;
         let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
-        data.save(key.as_str(), food)?;
+        data.save_food(key.as_str(), food)?;
         println!("Added '{}' as {key}", food.name);
         return Ok(());
     }

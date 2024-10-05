@@ -5,6 +5,7 @@ pub mod nutrients;
 pub mod search;
 pub mod serving;
 
+use chrono::NaiveDate;
 pub use data::*;
 pub use food::*;
 pub use journal::*;
@@ -76,8 +77,8 @@ impl Database {
             }))
     }
 
-    pub fn save<T: Data + std::fmt::Debug>(&self, key: &T::Key, data: &T) -> Result<()> {
-        let path = self.dir.join(T::path(key));
+    pub fn save_food(&self, key: &str, data: &Food) -> Result<()> {
+        let path = self.dir.join(Food::path(key));
         log::debug!("Saving {data:?} to {path:?}");
         fs::create_dir_all(
             path.parent()
@@ -89,8 +90,8 @@ impl Database {
         Ok(())
     }
 
-    pub fn load<T: Data>(&self, key: &T::Key) -> Result<Option<T>> {
-        let path = self.dir.join(T::path(key));
+    pub fn load_food(&self, key: &str) -> Result<Option<Food>> {
+        let path = self.dir.join(Food::path(key));
         log::debug!("Loading {path:?}");
         let file = match std::fs::File::open(&path) {
             Ok(f) => f,
@@ -100,7 +101,34 @@ impl Database {
             }
         };
         let reader = BufReader::new(file);
-        Ok(Some(T::load(reader)?))
+        Ok(Some(Food::load(reader)?))
+    }
+
+    pub fn save_journal(&self, key: &NaiveDate, data: &Journal) -> Result<()> {
+        let path = self.dir.join(Journal::path(key));
+        log::debug!("Saving {data:?} to {path:?}");
+        fs::create_dir_all(
+            path.parent()
+                .ok_or_else(|| anyhow!("No parent path: {path:?}"))?,
+        )?;
+        let file = std::fs::File::create(&path).with_context(|| format!("Open {path:?}"))?;
+        let mut writer = BufWriter::new(&file);
+        data.save(&mut writer)?;
+        Ok(())
+    }
+
+    pub fn load_journal(&self, key: &NaiveDate) -> Result<Option<Journal>> {
+        let path = self.dir.join(Journal::path(key));
+        log::debug!("Loading {path:?}");
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                bail!("Failed to open '{path:?}': {e}")
+            }
+        };
+        let reader = BufReader::new(file);
+        Ok(Some(Journal::load(reader)?))
     }
 
     pub fn remove<T: Data>(&self, key: &T::Key) -> Result<()> {
@@ -140,7 +168,7 @@ mod tests {
     #[test]
     fn test_load_food() {
         let (data, _tmp) = setup();
-        let oats: Food = data.load("oats").unwrap().unwrap();
+        let oats: Food = data.load_food("oats").unwrap().unwrap();
         assert_eq!(
             oats,
             Food {
@@ -160,7 +188,7 @@ mod tests {
     fn test_load_food_not_exists() {
         let tmp = tempfile::tempdir().unwrap();
         let data = Database::new(tmp.path()).unwrap();
-        let actual = data.load::<Food>("nope").unwrap();
+        let actual = data.load_food("nope").unwrap();
         assert!(actual.is_none());
     }
 
@@ -203,7 +231,7 @@ mod tests {
             },
             servings: vec![("g".into(), 50.0), ("cups".into(), 2.5)],
         };
-        data.save("cereal", &food).unwrap();
+        data.save_food("cereal", &food).unwrap();
         let res = fs::read_to_string(tmp.path().join("food/cereal.txt")).unwrap();
         assert_eq!(
             res,
@@ -226,7 +254,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let data = Database::new(tmp.path()).unwrap();
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
-        let actual = data.load::<Journal>(&date.clone()).unwrap();
+        let actual = data.load_journal(&date.clone()).unwrap();
         assert!(actual.is_none());
     }
 
@@ -243,7 +271,7 @@ mod tests {
         ]);
 
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 01).unwrap();
-        let actual: Journal = data.load(&date.clone()).unwrap().unwrap();
+        let actual: Journal = data.load_journal(&date.clone()).unwrap().unwrap();
         assert_eq!(expected, actual);
     }
 
@@ -259,7 +287,7 @@ mod tests {
         ]);
 
         let date = &chrono::NaiveDate::from_ymd_opt(2024, 07, 08).unwrap();
-        data.save(&date.clone(), &expected).unwrap();
+        data.save_journal(&date.clone(), &expected).unwrap();
 
         let actual = fs::read_to_string(
             tmp.path()
