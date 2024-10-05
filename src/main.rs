@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -8,6 +9,22 @@ use std::{
 use toml::value::Date;
 
 const APP_NAME: &'static str = "nom";
+
+#[derive(Subcommand)]
+enum Command {
+    Nom {
+        food: String,
+        quantity: Option<f32>,
+        unit: Option<String>,
+    },
+}
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
 
 // Macro describes the macronutrients of a food.
 #[derive(Deserialize, Debug)]
@@ -181,8 +198,10 @@ pub struct Journal(HashMap<String, f32>);
 fn main() -> Result<()> {
     env_logger::init();
 
+    let args = Args::parse();
     let dirs = xdg::BaseDirectories::new()?;
     let data = Data::new(&dirs.create_data_directory(APP_NAME)?);
+
     data.create_dirs()?;
     log::debug!("Created directories: {data:?}");
 
