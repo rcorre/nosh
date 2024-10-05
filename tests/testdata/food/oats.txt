@@ -1,0 +1,7 @@
+name: Oats
+carb: 30
+fat: 2.5
+protein: 5.0
+kcal: 162
+serving: 0.5 cups
+serving: 50g

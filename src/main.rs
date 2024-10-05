@@ -126,7 +126,7 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| (data.get_food(key), serving))
+        .map(|(key, serving)| (data.read_food(key), serving))
         .map(|(food, &serving)| match food {
             Ok(Some(food)) => Ok(JournalRow {
                 name: food.name,
@@ -168,7 +168,7 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
 }
 
 fn eat(data: &Data, key: String, serving: Option<String>) -> Result<()> {
-    let Some(food) = data.get_food(&key)? else {
+    let Some(food) = data.read_food(&key)? else {
         bail!("No food with key {key:?}");
     };
     let serving = if let Some(serving) = serving {
@@ -231,13 +231,13 @@ fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T
 }
 
 fn edit_food(data: &Data, key: &str) -> Result<()> {
-    let food = data.get_food(key)?.unwrap_or_default();
+    let food = data.read_food(key)?.unwrap_or_default();
     let food = edit(&food)?;
     data.write_food(key, &food)
 }
 
 fn show_food(data: &Data, key: &str) -> Result<()> {
-    match data.get_food(key)? {
+    match data.read_food(key)? {
         Some(food) => {
             println!("{food:#?}");
             Ok(())
@@ -347,7 +347,7 @@ struct SearchResponse {
 }
 
 fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
-    if data.get_food(&key)?.is_some() {
+    if data.read_food(&key)?.is_some() {
         bail!("Food with key {key} already exists");
     }
 

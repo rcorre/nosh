@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -210,8 +210,43 @@ impl Data {
         Ok(fs::write(&path, toml::to_string_pretty(obj)?)?)
     }
 
-    pub fn get_food(&self, key: &str) -> Result<Option<Food>> {
-        self.read(&self.food_dir.join(key).with_extension("toml"))
+    pub fn read_food(&self, key: &str) -> Result<Option<Food>> {
+        let path = &self.food_dir.join(key).with_extension("txt");
+        let content = match fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                bail!("Failed to open '{path:?}': {e}")
+            }
+        };
+
+        let mut food = Food::default();
+        for line in content.lines() {
+            log::trace!("Parsing food {key} line: {line}");
+            let Some((k, v)) = line.rsplit_once(":") else {
+                bail!("Invalid food line, expected ':': {line}");
+            };
+            let (k, v) = (k.trim(), v.trim());
+            match k {
+                "name" => food.name = v.into(),
+                "kcal" => food.nutrients.kcal = v.parse()?,
+                "carb" => food.nutrients.carb = v.parse()?,
+                "fat" => food.nutrients.fat = v.parse()?,
+                "protein" => food.nutrients.protein = v.parse()?,
+                "serving" => {
+                    let idx = v
+                        .find(|c: char| c != '.' && !c.is_digit(10))
+                        .ok_or_else(|| anyhow!("Invalid serving: {v}"))?;
+                    let (size, unit) = v.split_at(idx);
+                    let size = size.trim();
+                    let unit = unit.trim();
+                    let size = size.parse().with_context(|| format!("Parsing '{size}'"))?;
+                    food.servings.insert(unit.into(), size);
+                }
+                _ => bail!("Unexpected food key: {k}"),
+            }
+        }
+        Ok(Some(food))
     }
 
     pub fn list_food<'a>(
@@ -254,6 +289,41 @@ impl Data {
 mod tests {
     use super::*;
 
+    //https://stackoverflow.com/a/65192210/1435461
+    fn cp(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
+        fs::create_dir_all(&dst).unwrap();
+        for entry in fs::read_dir(src).unwrap() {
+            let entry = entry.unwrap();
+            let ty = entry.file_type().unwrap();
+            if ty.is_dir() {
+                cp(entry.path(), dst.as_ref().join(entry.file_name()));
+            } else {
+                fs::copy(entry.path(), dst.as_ref().join(entry.file_name())).unwrap();
+            }
+        }
+    }
+
+    fn setup() -> (Data, tempfile::TempDir) {
+        let _ = env_logger::try_init();
+        let tmp = tempfile::tempdir().unwrap();
+        let data = Data::new(tmp.path()).unwrap();
+        cp("tests/testdata", &tmp);
+        (data, tmp)
+    }
+
+    #[test]
+    fn test_read_food() {
+        let (data, _tmp) = setup();
+        let oats = data.read_food("oats").unwrap().unwrap();
+        assert_eq!(oats.name, "Oats");
+        assert_eq!(oats.nutrients.carb, 30.0);
+        assert_eq!(oats.nutrients.fat, 2.5);
+        assert_eq!(oats.nutrients.protein, 5.0);
+        assert_eq!(oats.nutrients.kcal, 162.0);
+        assert_eq!(oats.servings["cups"], 0.5);
+        assert_eq!(oats.servings["g"], 50.0);
+    }
+
     #[test]
     fn test_food_data() {
         let tmp = tempfile::tempdir().unwrap();
@@ -271,7 +341,7 @@ mod tests {
         };
 
         data.write_food("oats", &expected).unwrap();
-        let actual = data.get_food("oats").unwrap().unwrap();
+        let actual = data.read_food("oats").unwrap().unwrap();
         assert_eq!(expected, actual);
 
         assert_eq!(
