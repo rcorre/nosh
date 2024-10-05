@@ -2,6 +2,12 @@
 name = "nosh"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "CLI nutrition tracker"
+homepage = "https://codeberg.org/rrc/nosh"
+repository = "https://codeberg.org/rrc/nosh"
+keywords = ["nutrition", "health", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.86"

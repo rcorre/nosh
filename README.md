@@ -30,7 +30,7 @@ nosh recipe edit <key>
 
 ```sh
 # Add a serving of a food or recipe to today's journal
-nosh nosh <food|recipe> [serving]
+nosh eat <food|recipe> [serving]
 
 # Show all food consumed on a day.
 nosh journal show [day]
