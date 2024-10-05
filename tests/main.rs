@@ -1,9 +1,8 @@
-use std::{io::Write, ops::Deref, os::unix::fs::OpenOptionsExt};
+use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 use assert_cmd::Command;
-use httptest::http::request;
-use nosh::{Food, Nutrients, APP_NAME};
-use predicates::{prelude::*, BoxPredicate};
+use nosh::{Food, Nutrients};
+use predicates::prelude::*;
 
 struct CLI {
     data_dir: tempfile::TempDir,
@@ -35,16 +34,26 @@ fn banana() -> Food {
     }
 }
 
+fn cp(src: impl AsRef<Path>, dst: impl AsRef<Path>) {
+    fs::create_dir_all(&dst).unwrap();
+    for entry in fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let ty = entry.file_type().unwrap();
+        if ty.is_dir() {
+            cp(entry.path(), dst.as_ref().join(entry.file_name()));
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name())).unwrap();
+        }
+    }
+}
+
 impl CLI {
     fn new() -> Self {
+        let _ = env_logger::try_init();
         let cli = Self {
             data_dir: tempfile::tempdir().unwrap(),
         };
-
-        // pre-load some data
-        cli.add_food("oats", &oats());
-        cli.add_food("banana", &banana());
-
+        cp("tests/testdata", cli.data_dir.path());
         cli
     }
 
@@ -77,15 +86,6 @@ impl CLI {
         cmd.env("NOSH_SEARCH_URL", url);
         cmd
     }
-
-    fn add_food(&self, key: &str, food: &Food) {
-        let path = self.data_dir.path().join(APP_NAME);
-        log::info!("Test staging food to {path:?}: {food:?}");
-        nosh::Data::new(&path)
-            .unwrap()
-            .write_food(key, food)
-            .unwrap()
-    }
 }
 
 fn matches(pattern: &str) -> predicates::str::RegexPredicate {
@@ -98,19 +98,6 @@ fn matches_food(food: &Food) -> predicates::str::RegexPredicate {
         "{}.*{:.1}.*{:.1}.*{:.1}.*{:.0}",
         food.name, n.carb, n.fat, n.protein, n.kcal
     ))
-}
-
-fn matches_food_details(food: &Food) -> BoxPredicate<str> {
-    let n = &food.nutrients;
-    let mut pred = BoxPredicate::<str>::new(
-        matches(&format!("fat.*{}", n.fat))
-            .and(matches(&format!("protein.*{}", n.protein)))
-            .and(matches(&format!("kcal.*{}", n.kcal))),
-    );
-    for (unit, amount) in &food.servings {
-        pred = BoxPredicate::<str>::new(pred.and(matches(&format!("{unit}.*{amount}"))));
-    }
-    pred
 }
 
 fn matches_serving(serving: f32, food: &Food) -> predicates::str::RegexPredicate {
@@ -152,7 +139,7 @@ fn test_food_show() {
         .args(["food", "show", "oats"])
         .assert()
         .success()
-        .stdout(matches_food_details(&oats()));
+        .stdout(matches_food(&oats()));
 }
 
 #[test]
@@ -399,5 +386,5 @@ fn test_food_search() {
         .args(["food", "show", "potato"])
         .assert()
         .success()
-        .stdout(matches_food_details(&food));
+        .stdout(matches_food(&food));
 }

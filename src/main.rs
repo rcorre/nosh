@@ -3,7 +3,6 @@ use clap::{Parser, Subcommand};
 use nosh::{Data, Nutrients, APP_NAME};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     fs,
     io::{Read, Write},
 };
@@ -233,17 +232,16 @@ fn edit<T: Serialize + DeserializeOwned + std::fmt::Debug>(orig: &T) -> Result<T
 fn edit_food(data: &Data, key: &str) -> Result<()> {
     let food = data.read_food(key)?.unwrap_or_default();
     let food = edit(&food)?;
-    data.write_food(key, &food)
+    data.save_food(key, &food)
 }
 
 fn show_food(data: &Data, key: &str) -> Result<()> {
-    match data.read_food(key)? {
-        Some(food) => {
-            println!("{food:#?}");
-            Ok(())
-        }
-        None => Err(anyhow!("No food with key {key:?}")),
-    }
+    let Some(food) = data.read_food(key)? else {
+        bail!("No food with key {key:?}");
+    };
+    let mut table = Table::new(std::iter::once(food));
+    println!("{}", table.with(Style::sharp()));
+    Ok(())
 }
 
 // TODO: include keys in data. Probably want to make key a non-serialized struct field.
@@ -402,7 +400,7 @@ fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
 
     let idx: usize = res.parse()?;
     let (_, food) = foods.get(idx).ok_or(anyhow!("Index out of range"))?;
-    data.write_food(&key, &food)?;
+    data.save_food(&key, &food)?;
     println!("Added '{}' as {key}", food.name);
 
     Ok(())

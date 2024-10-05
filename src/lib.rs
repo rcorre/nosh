@@ -330,18 +330,18 @@ mod tests {
         let (data, _tmp) = setup();
         let oats = data.read_food("oats").unwrap().unwrap();
         assert_eq!(oats.name, "Oats");
-        assert_eq!(oats.nutrients.carb, 30.0);
-        assert_eq!(oats.nutrients.fat, 2.5);
-        assert_eq!(oats.nutrients.protein, 5.0);
-        assert_eq!(oats.nutrients.kcal, 162.0);
-        assert_eq!(oats.servings, [("cups".into(), 0.5), ("g".into(), 50.0)]);
+        assert_eq!(oats.nutrients.carb, 68.7);
+        assert_eq!(oats.nutrients.fat, 5.89);
+        assert_eq!(oats.nutrients.protein, 13.5);
+        assert_eq!(oats.nutrients.kcal, 382.0);
+        assert_eq!(oats.servings, [("cups".into(), 0.5), ("g".into(), 100.0)]);
     }
 
     #[test]
     fn test_save_food() {
         let (data, tmp) = setup();
-        let banana = Food {
-            name: "Banana".into(),
+        let food = Food {
+            name: "Cereal".into(),
             nutrients: Nutrients {
                 carb: 22.0,
                 fat: 0.5,
@@ -350,12 +350,12 @@ mod tests {
             },
             servings: vec![("g".into(), 50.0), ("cups".into(), 2.5)],
         };
-        data.save_food("banana", &banana).unwrap();
+        data.save_food("banana", &food).unwrap();
         let res = fs::read_to_string(tmp.path().join("food/banana.txt")).unwrap();
         assert_eq!(
             res,
             [
-                "name: Banana",
+                "name: Cereal",
                 "carb: 22",
                 "fat: 0.5",
                 "protein: 1.2",
