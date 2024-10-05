@@ -24,7 +24,9 @@ impl SearchFood {
     const NUTRIENT_ID_PROTEIN: u32 = 1003; // Protein
     const NUTRIENT_ID_FAT: u32 = 1004; // Total lipid (fat)
     const NUTRIENT_ID_CARB_DIFFERENCE: u32 = 1005; // Carbohydrate, by difference
-    const NUTRIENT_ID_ENERGY_KCAL: u32 = 1008; // Energy
+    const NUTRIENT_ID_ENERGY: u32 = 1008; // Energy
+    const NUTRIENT_ID_ENERGY_ATWATER_GENERAL: u32 = 2047; //Energy (Atwater General Factors)
+    const NUTRIENT_ID_ENERGY_ATWATER_SPECIFIC: u32 = 2048; //Energy (Atwater Specific Factors)
     const NUTRIENT_ID_CARB_SUMMATION: u32 = 1050; // Carbohydrate, by summation
 
     fn nutrient(&self, id: u32) -> Option<f32> {
@@ -43,7 +45,9 @@ impl SearchFood {
             fat: self.nutrient(Self::NUTRIENT_ID_FAT).unwrap_or_default(),
             protein: self.nutrient(Self::NUTRIENT_ID_PROTEIN).unwrap_or_default(),
             kcal: self
-                .nutrient(Self::NUTRIENT_ID_ENERGY_KCAL)
+                .nutrient(Self::NUTRIENT_ID_ENERGY_ATWATER_SPECIFIC)
+                .or(self.nutrient(Self::NUTRIENT_ID_ENERGY_ATWATER_SPECIFIC))
+                .or(self.nutrient(Self::NUTRIENT_ID_ENERGY))
                 .unwrap_or_default(),
         }
     }
@@ -63,6 +67,12 @@ impl SearchFood {
                 return res;
             };
             res.push((unit.into(), amount));
+        }
+        // Foundation foods don't seem to have serving portions, but
+        // https://fdc.nal.usda.gov/Foundation_Foods_Documentation.html says:
+        // All reported values are based on a 100-gram or percent basis of the edible portion
+        if res.is_empty() {
+            res.push(("g".into(), 100.0));
         }
         res
     }
@@ -103,75 +113,90 @@ pub fn search_food(term: &str, url: Option<&str>) -> Result<Vec<crate::Food>> {
     Ok(res.foods.iter().map(|x| crate::Food::from(x)).collect())
 }
 
-// mod tests {
-//     use super::*;
-//     use httptest::{matchers::*, responders::*, Expectation, Server};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Food;
+    use httptest::{matchers::*, responders::*, Expectation, Server};
+    use pretty_assertions::assert_eq;
+    use std::fs;
 
-//     #[test]
-//     fn test_search() {
-//         let server = Server::run();
-//         server.expect(
-//             Expectation::matching(request::method_path("GET", "/test")).respond_with(
-//                 status_code(200).body(
-//                     r#"{"foods":[{
-//         "description": "Potato, NFS",
-//         "servingSizeUnit": "g",
-//         "servingSize": 144.0,
-//         "householdServingFullText": "1 cup",
-//         "foodNutrients": [
-//             {
-//               "nutrientId": 1003,
-//               "nutrientName": "Protein",
-//               "unitName": "G",
-//               "value": 1.87
-//             },
-//             {
-//               "nutrientId": 1004,
-//               "nutrientName": "Total lipid (fat)",
-//               "unitName": "G",
-//               "value": 4.25
-//             },
-//             {
-//               "nutrientId": 1005,
-//               "nutrientName": "Carbohydrate, by difference",
-//               "unitName": "G",
-//               "value": 20.4
-//             },
-//             {
-//               "nutrientId": 1008,
-//               "nutrientName": "Energy",
-//               "unitName": "KCAL",
-//               "value": 126
-//             }
-//         ]
-//     }]}"#,
-//                 ),
-//             ),
-//         );
-//         let url = server.url("/test");
-//         let food = &Food {
-//             name: "Potato, NFS".into(),
-//             nutrients: Nutrients {
-//                 carb: 20.4,
-//                 fat: 4.25,
-//                 protein: 1.87,
-//                 kcal: 126.0,
-//             },
-//             servings: [("g".to_string(), 144.0), ("cup".to_string(), 1.0)].into(),
-//         };
+    #[test]
+    fn test_search_foundation() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/test")).respond_with(
+                status_code(200).body(
+                    fs::read_to_string("tests/testdata/search/foundation/page1.json").unwrap(),
+                ),
+            ),
+        );
+        let url = server.url("/test");
 
-//         cli.search(&url.to_string())
-//             .args(["food", "search", "potato"])
-//             .write_stdin("0") // select result 0
-//             .assert()
-//             .success()
-//             .stdout(matches_food(&food));
+        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        assert_eq!(
+            actual,
+            vec![
+                Food {
+                    name: "Flour, potato".into(),
+                    nutrients: Nutrients {
+                        carb: 79.9,
+                        fat: 0.951,
+                        protein: 8.11,
+                        kcal: 353.0
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+                Food {
+                    name: "Potatoes, gold, without skin, raw".into(),
+                    nutrients: Nutrients {
+                        carb: 16.0,
+                        fat: 0.264,
+                        protein: 1.81,
+                        kcal: 71.6,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+            ]
+        );
+    }
 
-//         // The food should have been added.
-//         cli.cmd()
-//             .args(["food", "show", "potato"])
-//             .assert()
-//             .success()
-//             .stdout(matches_food(&food));
-//     }
-// }
+    #[test]
+    fn test_search_fndds() {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/test")).respond_with(
+                status_code(200)
+                    .body(fs::read_to_string("tests/testdata/search/fndds/page1.json").unwrap()),
+            ),
+        );
+        let url = server.url("/test");
+
+        let actual = search_food("potato", Some(&url.to_string())).unwrap();
+        assert_eq!(
+            actual,
+            vec![
+                Food {
+                    name: "Potato patty".into(),
+                    nutrients: Nutrients {
+                        carb: 13.5,
+                        fat: 11.3,
+                        protein: 3.89,
+                        kcal: 171.0,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+                Food {
+                    name: "Potato pancake".into(),
+                    nutrients: Nutrients {
+                        carb: 20.6,
+                        fat: 10.8,
+                        protein: 4.47,
+                        kcal: 196.0,
+                    },
+                    servings: vec![("g".into(), 100.0)],
+                },
+            ]
+        );
+    }
+}

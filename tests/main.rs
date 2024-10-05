@@ -354,34 +354,53 @@ fn test_food_search() {
     let server = Server::run();
     server.expect(
         Expectation::matching(request::method_path("GET", "/test")).respond_with(
-            status_code(200).body(fs::read_to_string("tests/testdata/search/page1.json").unwrap()),
+            status_code(200)
+                .body(fs::read_to_string("tests/testdata/search/foundation/page1.json").unwrap()),
         ),
     );
     let url = server.url("/test");
-    let food = &Food {
-        name: "Potato, NFS".into(),
-        nutrients: Nutrients {
-            carb: 20.4,
-            fat: 4.25,
-            protein: 1.87,
-            kcal: 126.0,
-        },
-        servings: [("g".to_string(), 144.0), ("cup".to_string(), 1.0)].into(),
-    };
 
     cli.search(&url.to_string())
         .args(["food", "search", "potato"])
-        .write_stdin("0") // select result 0
+        .write_stdin("1") // select result 1
         .assert()
         .success()
-        .stdout(matches_food(&food));
+        .stdout(matches_food(&Food {
+            name: "Flour, potato".into(),
+            nutrients: Nutrients {
+                carb: 79.9,
+                fat: 1.0,
+                protein: 8.1,
+                kcal: 353.0,
+            },
+            servings: vec![],
+        }))
+        .stdout(matches_food(&Food {
+            name: "Potatoes, gold, without skin, raw".into(),
+            nutrients: Nutrients {
+                carb: 16.0,
+                fat: 0.3,
+                protein: 1.8,
+                kcal: 72.0,
+            },
+            servings: vec![],
+        }));
 
     // The food should have been added.
     cli.cmd()
         .args(["food", "show", "potato"])
         .assert()
         .success()
-        .stdout(matches_food(&food));
+        .stdout(matches_food(&Food {
+            name: "Potatoes, gold, without skin, raw".into(),
+            nutrients: Nutrients {
+                carb: 16.0,
+                fat: 0.3,
+                protein: 1.8,
+                kcal: 72.0,
+            },
+            servings: vec![],
+        }));
 }
 
 #[test]
