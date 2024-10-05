@@ -354,7 +354,7 @@ fn test_food_search() {
     let server = Server::run();
     server.expect(
         Expectation::matching(request::method_path("GET", "/test")).respond_with(
-            status_code(200).body(fs::read_to_string("tests/testdata/search/page0.json").unwrap()),
+            status_code(200).body(fs::read_to_string("tests/testdata/search/page1.json").unwrap()),
         ),
     );
     let url = server.url("/test");
