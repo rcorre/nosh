@@ -4,13 +4,25 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+fn float0(f: &f32) -> String {
+    format!("{:.0}", f)
+}
+
+fn float1(f: &f32) -> String {
+    format!("{:.1}", f)
+}
+
 // The macronutrients of a food.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, tabled::Tabled)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Nutrients {
+    #[tabled(display_with = "float1")]
     pub carb: f32,
+    #[tabled(display_with = "float1")]
     pub fat: f32,
+    #[tabled(display_with = "float1")]
     pub protein: f32,
+    #[tabled(display_with = "float0")]
     pub kcal: f32,
 }
 

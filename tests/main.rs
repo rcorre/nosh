@@ -10,7 +10,6 @@ struct CLI {
 
 impl CLI {
     fn new() -> Self {
-        // let _ = env_logger::try_init();
         Self {
             data_dir: tempfile::tempdir().unwrap(),
         }
@@ -172,8 +171,8 @@ fn test_nom() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches("Oats.*1.*68.7.*5.89.*13.5.*382"))
-        .stdout(matches("Total.*1.*68.7.*5.89.*13.5.*382"));
+        .stdout(matches("Oats.*1.*68.7.*5.9.*13.5.*382"))
+        .stdout(matches("Total.*1.*68.7.*5.9.*13.5.*382"));
 
     // Add 2.5 servings
     cli.cmd().args(["nom", "oats", "2.5"]).assert().success();
@@ -181,8 +180,8 @@ fn test_nom() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches("Oats.*3.5.*240.44998.*20.615.*47.25.*1337"))
-        .stdout(matches("Total.*240.44998.*20.615.*47.25.*1337"));
+        .stdout(matches("Oats.*3.5.*240.4.*20.6.*47.2.*1337"))
+        .stdout(matches("Total.*240.4.*20.6.*47.2.*1337"));
 
     // Add one serving of banana
     cli.cmd().args(["nom", "banana"]).assert().success();
@@ -190,7 +189,7 @@ fn test_nom() {
         .args(["journal", "show"])
         .assert()
         .success()
-        .stdout(matches("Oats.*3.5.*240.44998.*20.615.*47.25.*1337"))
-        .stdout(matches("Banana.*1.*23.0.*0.2.*0.74.*98"))
-        .stdout(matches("Total.*240.44998.*20.615.*47.25.*1337"));
+        .stdout(matches("Oats.*3.5.*240.4.*20.6.*47.2.*1337"))
+        .stdout(matches("Banana.*1.*23.0.*0.2.*0.7.*98"))
+        .stdout(matches("Total.*263.4.*20.8.*48.0.*1435"));
 }

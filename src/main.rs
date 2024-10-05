@@ -134,10 +134,10 @@ fn show_journal(data: &Data, key: Option<String>) -> Result<()> {
     let mut total = Table::new([[
         "Total".to_string(),
         "".to_string(),
-        total.carb.to_string(),
-        total.fat.to_string(),
-        total.protein.to_string(),
-        total.kcal.to_string(),
+        format!("{:.1}", total.carb),
+        format!("{:.1}", total.fat),
+        format!("{:.1}", total.protein),
+        format!("{:.0}", total.kcal),
     ]]);
     total.with(ColumnNames::default());
 
