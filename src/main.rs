@@ -6,6 +6,17 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use tabled::{
+    grid::colors::Colors,
+    settings::{
+        object::Rows,
+        panel::Header,
+        style::{HorizontalLine, LineText, VerticalLine},
+        themes::{Colorization, ColumnNames},
+        Border, Color, Concat, Panel, Style,
+    },
+    Table,
+};
 
 const APP_NAME: &'static str = "nom";
 
@@ -32,42 +43,42 @@ struct Args {
     command: Command,
 }
 
-// Macro describes the macronutrients of a food.
-#[derive(Deserialize, Debug)]
-struct Nutrients {
-    carb: Option<f32>,
-    fat: Option<f32>,
-    protein: Option<f32>,
-    kcal: Option<f32>,
+// The macronutrients of a food.
+#[derive(Clone, Copy, Debug, Default, Deserialize, tabled::Tabled)]
+pub struct Nutrients {
+    pub carb: f32,
+    pub fat: f32,
+    pub protein: f32,
+    pub kcal: f32,
 }
 
 impl Nutrients {
-    // Grams of carbohydrates per serving.
-    // Defaults to 0.
-    pub fn carb(&self) -> f32 {
-        self.carb.unwrap_or_default()
-    }
-
-    // Grams of fat per serving.
-    // Defaults to 0.
-    pub fn fat(&self) -> f32 {
-        self.fat.unwrap_or_default()
-    }
-
-    // Grams of protein per serving.
-    // Defaults to 0.
-    pub fn protein(&self) -> f32 {
-        self.protein.unwrap_or_default()
-    }
-
-    // KiloCalories (or "big C Calories") per serving.
-    // If omitted, defaults to the Atwater General Calculation:
+    // If kcal is 0, compute it using the Atwater General Calculation:
     // 4*carb + 4*protein + 9*fat.
     // Note that there is a newer system that uses food-specific multipliers:
     // See https://en.wikipedia.org/wiki/Atwater_system#Modified_system.
-    pub fn kcal(&self) -> f32 {
-        self.kcal
-            .unwrap_or_else(|| self.carb() * 4.0 + self.protein() * 4.0 + self.fat() * 9.0)
+    pub fn maybe_compute_kcal(self) -> Nutrients {
+        Nutrients {
+            kcal: if self.kcal > 0.0 {
+                self.kcal
+            } else {
+                self.carb * 4.0 + self.fat * 9.0 + self.protein * 4.0
+            },
+            ..self
+        }
+    }
+}
+
+impl std::ops::Add<Nutrients> for Nutrients {
+    type Output = Nutrients;
+
+    fn add(self, rhs: Nutrients) -> Self::Output {
+        Nutrients {
+            carb: self.carb + rhs.carb,
+            fat: self.fat + rhs.fat,
+            protein: self.protein + rhs.protein,
+            kcal: self.kcal + rhs.kcal,
+        }
     }
 }
 
@@ -76,54 +87,43 @@ impl std::ops::Mul<f32> for Nutrients {
 
     fn mul(self, rhs: f32) -> Self::Output {
         Nutrients {
-            carb: Some(self.carb() * rhs),
-            fat: Some(self.fat() * rhs),
-            protein: Some(self.protein() * rhs),
-            kcal: Some(self.kcal() * rhs),
+            carb: self.carb * rhs,
+            fat: self.fat * rhs,
+            protein: self.protein * rhs,
+            kcal: self.kcal * rhs,
         }
     }
 }
 
 #[test]
-fn test_nutrient_defaults() {
+fn test_nutrient_mult() {
     let nut = Nutrients {
-        carb: None,
-        fat: None,
-        protein: None,
-        kcal: None,
-    };
+        carb: 1.2,
+        fat: 2.3,
+        protein: 3.1,
+        kcal: 124.5,
+    } * 2.0;
 
-    assert_eq!(nut.carb(), 0.0);
-    assert_eq!(nut.fat(), 0.0);
-    assert_eq!(nut.protein(), 0.0);
-    assert_eq!(nut.kcal(), 0.0);
-}
-
-#[test]
-fn test_nutrient_values() {
-    let nut = Nutrients {
-        carb: Some(1.2),
-        fat: Some(2.3),
-        protein: Some(3.1),
-        kcal: Some(124.5),
-    };
-
-    assert_eq!(nut.carb(), 1.2);
-    assert_eq!(nut.fat(), 2.3);
-    assert_eq!(nut.protein(), 3.1);
-    assert_eq!(nut.kcal(), 124.5);
+    assert_eq!(nut.carb, 2.4);
+    assert_eq!(nut.fat, 4.6);
+    assert_eq!(nut.protein, 6.2);
+    assert_eq!(nut.kcal, 149.0);
 }
 
 #[test]
 fn test_nutrient_kcal_computation() {
     let nut = Nutrients {
-        carb: Some(1.2),
-        fat: Some(2.3),
-        protein: Some(3.1),
-        kcal: None,
-    };
+        carb: 1.2,
+        fat: 2.3,
+        protein: 3.1,
+        kcal: 0.0,
+    }
+    .maybe_compute_kcal();
 
-    assert_eq!(nut.kcal(), 37.9);
+    assert_eq!(nut.carb, 1.2);
+    assert_eq!(nut.fat, 2.3);
+    assert_eq!(nut.protein, 3.1);
+    assert_eq!(nut.kcal, 37.9);
 }
 
 // Food describes a single food item.
@@ -224,12 +224,13 @@ impl Data {
 #[derive(Deserialize, Debug, Default)]
 pub struct Journal(HashMap<String, f32>);
 
-// #[derive(tabled::Tabled)]
-// struct JournalRow {
-//     name: String,
-//     serving: f32,
-//     nutrients: Nutrients,
-// }
+#[derive(tabled::Tabled, Default)]
+struct JournalRow {
+    name: String,
+    serving: f32,
+    #[tabled(inline)]
+    nutrients: Nutrients,
+}
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -255,25 +256,41 @@ fn show(data: &Data, args: ShowArgs) -> Result<()> {
     let rows: Result<Vec<_>> = journal
         .0
         .iter()
-        .map(|(key, serving)| {
-            data.food(key).map(|food| {
-                (
-                    food.name,
-                    serving,
-                    food.nutrients.carb() * serving,
-                    food.nutrients.fat() * serving,
-                    food.nutrients.protein() * serving,
-                    food.nutrients.kcal() * serving,
-                )
+        .map(|(key, &serving)| {
+            data.food(key).map(|food| JournalRow {
+                name: food.name,
+                serving,
+                nutrients: food.nutrients * serving,
             })
         })
         .collect();
     let rows = rows?;
-    let mut table = tabled::Table::new(rows);
-    table
-        .with(tabled::settings::themes::ColumnNames::default())
-        .with(tabled::settings::Style::modern());
-    println!("{}", table);
+    let total: Nutrients = rows
+        .iter()
+        .fold(Nutrients::default(), |a, b| a + b.nutrients);
+    let mut total = Table::new([[
+        "Total".to_string(),
+        "".to_string(),
+        total.carb.to_string(),
+        total.fat.to_string(),
+        total.protein.to_string(),
+        total.kcal.to_string(),
+    ]]);
+    total.with(ColumnNames::default());
+
+    let line = HorizontalLine::inherit(Style::modern());
+
+    let table = Table::new(rows)
+        .with(
+            Style::modern()
+                .remove_horizontals()
+                .horizontals([(1, line)]),
+        )
+        .with(Concat::vertical(total))
+        .with(Colorization::exact([Color::BOLD], Rows::last()))
+        .to_string();
+
+    println!("{table}");
     Ok(())
 }
 
