@@ -100,7 +100,7 @@ fn test_nutrient_kcal_computation() {
 }
 
 // Food describes a single food item.
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, tabled::Tabled)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Food {
     // The display name of the food. This is shown in the UI.
@@ -108,6 +108,7 @@ pub struct Food {
     pub name: String,
 
     // The macronutrients of this food item.
+    #[tabled(inline)]
     pub nutrients: Nutrients,
 
     // Ways of describing a single serving of this food.
@@ -117,6 +118,7 @@ pub struct Food {
     // g = 100.0
     // chips = 14
     // ```
+    #[tabled(skip)]
     pub servings: HashMap<String, f32>,
 }
 

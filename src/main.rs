@@ -1,8 +1,9 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use nom::{Data, Nutrients};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs,
     io::{Read, Write},
 };
@@ -22,6 +23,7 @@ const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 enum FoodCommand {
     Edit { key: String },
     Show { key: String },
+    Search { key: String, term: Option<String> },
 }
 
 #[derive(Subcommand)]
@@ -83,6 +85,7 @@ fn main() -> Result<()> {
         Command::Food { command } => match command {
             FoodCommand::Edit { key } => edit_food(&data, &key),
             FoodCommand::Show { key } => show_food(&data, &key),
+            FoodCommand::Search { key, term } => search_food(&data, key, term),
         },
         Command::Recipe { command } => match command {
             RecipeCommand::Edit { key } => todo!(),
@@ -226,4 +229,104 @@ fn show_food(data: &Data, key: &str) -> Result<()> {
         }
         None => Err(anyhow!("No food with key {key:?}")),
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchNutrient {
+    nutrient_id: u32,
+    value: f32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchFood {
+    description: Option<String>,
+    serving_size: Option<f32>,
+    serving_size_unit: Option<String>,
+    food_nutrients: Option<Vec<SearchNutrient>>,
+    // household_serving_full_text: String,
+}
+
+impl SearchFood {
+    const NUTRIENT_ID_PROTEIN: u32 = 1003; //Protein
+    const NUTRIENT_ID_FAT: u32 = 1004; //Total lipid (fat)
+    const NUTRIENT_ID_CARB_DIFFERENCE: u32 = 1005; //Carbohydrate, by difference
+    const NUTRIENT_ID_ENERGY_KCAL: u32 = 1008; // Energy
+    const NUTRIENT_ID_CARB_SUMMATION: u32 = 1050; //Carbohydrate, by summation
+
+    fn nutrient(&self, id: u32) -> Option<f32> {
+        match &self.food_nutrients {
+            Some(n) => n.iter().find(|x| x.nutrient_id == id).map(|x| x.value),
+            None => None,
+        }
+    }
+
+    fn nutrients(&self) -> Nutrients {
+        Nutrients {
+            carb: self
+                .nutrient(Self::NUTRIENT_ID_CARB_DIFFERENCE)
+                .or(self.nutrient(Self::NUTRIENT_ID_CARB_SUMMATION))
+                .unwrap_or_default(),
+            fat: self.nutrient(Self::NUTRIENT_ID_FAT).unwrap_or_default(),
+            protein: self.nutrient(Self::NUTRIENT_ID_PROTEIN).unwrap_or_default(),
+            kcal: self
+                .nutrient(Self::NUTRIENT_ID_ENERGY_KCAL)
+                .unwrap_or_default(),
+        }
+    }
+
+    fn servings(&self) -> HashMap<String, f32> {
+        // TODO: Parse household serving
+        match (&self.serving_size_unit, self.serving_size) {
+            (Some(unit), Some(size)) => [(unit.clone(), size)].into(),
+            _ => [].into(),
+        }
+    }
+}
+
+impl From<&SearchFood> for nom::Food {
+    fn from(value: &SearchFood) -> Self {
+        nom::Food {
+            nutrients: value.nutrients(),
+            servings: value.servings(),
+            name: value.description.clone().unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchResponse {
+    foods: Vec<SearchFood>,
+}
+
+fn search_food(data: &Data, key: String, term: Option<String>) -> Result<()> {
+    if data.food(&key)?.is_some() {
+        bail!("Food with key {key} already exists");
+    }
+
+    let term = term.unwrap_or(key);
+
+    let client = reqwest::blocking::Client::new();
+    let req = client
+        .get("https://api.nal.usda.gov/fdc/v1/foods/search")
+        .header("X-Api-Key", "DEMO_KEY")
+        .query(&[("query", term)])
+        .build()?;
+
+    log::debug!("Sending request: {req:?}");
+    let res: SearchResponse = client.execute(req)?.error_for_status()?.json()?;
+    let foods = res.foods.iter().map(|x| nom::Food::from(x));
+
+    let table = Table::new(foods)
+        .with(Style::sharp())
+        .with(Colorization::rows([
+            Color::BG_BLACK | Color::FG_BLACK,
+            Color::BG_BLACK | Color::FG_WHITE,
+        ]))
+        .to_string();
+    println!("{table}");
+
+    Ok(())
 }
